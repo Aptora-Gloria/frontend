@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, KeyboardEvent } from 'react';
 import { motion } from 'framer-motion';
 import { Github } from 'lucide-react';
 import { buildGitHubAuthUrl } from '../../features/auth-login/lib/buildGitHubAuthUrl';
 
 export const LoginPage = () => {
-  const [dark] = useState(false); // Dark mode state (currently not used but kept for future use)
+  const [dark] = useState(false);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -15,20 +15,17 @@ export const LoginPage = () => {
     }
   }, [dark]);
 
-  // Başlığa tıklayınca sayfayı yenile
   const refreshPage = () => {
     window.location.reload();
   };
-
-  // Klavye ile erişilebilirlik (Enter/Space)
-  const handleTitleKey = (e: React.KeyboardEvent) => {
+  
+  const handleTitleKey = (e: KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       refreshPage();
     }
   };
 
-  // GitHub OAuth login
   const handleGitHubLogin = () => {
     try {
       const authUrl = buildGitHubAuthUrl();
@@ -40,15 +37,19 @@ export const LoginPage = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden selection:bg-slate-900/10 dark:selection:bg-white/10">
-      {/* Soft cross-fade background */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_40%,theme(colors.slate.200),transparent_60%)] dark:bg-[radial-gradient(60%_60%_at_50%_40%,theme(colors.slate.800),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(35%_35%_at_20%_80%,theme(colors.slate.300)/60%,transparent_70%)] dark:bg-[radial-gradient(35%_35%_at_20%_80%,theme(colors.slate.700)/60%,transparent_70%)]" />
-      </div>
+      {/* Background */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(ellipse at center, rgba(2,6,23,0.65) 0%, rgba(30,41,59,0.45) 40%, rgba(51,65,85,0.25) 65%, transparent 90%)',
+        }}
+      />
 
       {/* Center content */}
-      <div className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 text-center">
-        {/* Logo + Title (title tıklanınca yenile) */}
+      <div className="relative mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 text-center">
+        {/* Logo + Title */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -73,7 +74,7 @@ export const LoginPage = () => {
           Sign in to your dashboard
         </p>
 
-        {/* GitHub button (hover'da havaya kalkar) */}
+        {/* GitHub button */}
         <motion.button
           whileHover={{ y: -10, scale: 1.04 }}
           whileTap={{ scale: 0.98, y: 0 }}
@@ -90,4 +91,3 @@ export const LoginPage = () => {
     </div>
   );
 };
-

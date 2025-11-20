@@ -26,7 +26,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
   // Not authenticated - redirect to login
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   // Authenticated - render children
