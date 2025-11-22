@@ -1,6 +1,17 @@
 // src/pages/dashboard/DashboardPage.tsx
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { GitBranch, Users, Activity, Flame, RefreshCw } from 'lucide-react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  GitBranch,
+  Users,
+  Activity,
+  Flame,
+  RefreshCw,
+} from 'lucide-react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -17,12 +28,10 @@ import {
 
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { getUserRepos } from '@/shared/lib/repo-api';
-import {
-  getCommitsByRepository,
-  initCommitsForRepository,
-} from '@/shared/lib/commit-api';
-import type { Commit } from '@/entities/commit';
+import { queryCommits } from '@/shared/lib/commit-api';
+
 import type { Repo } from '@/entities/repo';
+import type { Commit } from '@/entities/commit';
 
 type CommitsPerWeekPoint = {
   w: string;
@@ -96,7 +105,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
 
   const [repos, setRepos] = useState<Repo[]>([]);
-  const [selectedRepoId, setSelectedRepoId] = useState<number | null>(null);
+  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
 
   const [commits, setCommits] = useState<Commit[]>([]);
   const [recentCommits, setRecentCommits] =
@@ -134,7 +143,7 @@ export default function DashboardPage() {
     fetchRepos();
   }, [user?.login, selectedRepoId]);
 
-  // --- 2) Seçili repo için commitleri getir + gerekirse auto-init yap ---
+  // --- 2) Seçili repo için commitleri getir ---
   useEffect(() => {
     const fetchCommits = async () => {
       if (!selectedRepo) {
@@ -146,30 +155,18 @@ export default function DashboardPage() {
       try {
         setIsLoadingCommits(true);
 
-        // 2.1: Önce DB’den olan commitleri çek
-        let repoCommits = await getCommitsByRepository(selectedRepo.id);
+        const fullName = selectedRepo.fullName;
+        const branchName = selectedRepo.defaultBranch || 'main';
 
-        // 2.2: Eğer DB’de commit yoksa, otomatik init
-        if (!repoCommits.length) {
-          console.info(
-            '[Dashboard] No commits in DB, calling /api/github/commits/init…',
-          );
-
-          // TODO: branch tablosu frontend'e açılınca burayı güncelleriz
-          const fallbackBranchId = 1;
-
-          repoCommits = await initCommitsForRepository(
-            selectedRepo.id,
-            fallbackBranchId,
-          );
-        }
+        // ⬇⬇⬇ ÖNEMLİ DEĞİŞİKLİK: obje yerine iki string parametre
+        const repoCommits = await queryCommits(fullName, branchName);
+        // ⬆⬆⬆
 
         setCommits(repoCommits);
 
-        // UI için son 20 commit
         const mapped = repoCommits
           .slice(0, 20)
-          .map((c) => mapCommitToRecentCommit(c, selectedRepo.fullName));
+          .map((c) => mapCommitToRecentCommit(c, fullName));
         setRecentCommits(mapped.length ? mapped : DEFAULT_RECENT_COMMITS);
       } catch (error) {
         console.error('❌ Failed to load commits:', error);
@@ -199,8 +196,7 @@ export default function DashboardPage() {
   const mostActiveRepo = selectedRepo?.fullName ?? '-';
 
   const lastSync =
-    selectedRepo?.lastSyncedAt ??
-    (commits.length
+    commits.length
       ? new Date(
         Math.max(
           ...commits.map((c) =>
@@ -208,12 +204,12 @@ export default function DashboardPage() {
           ),
         ),
       ).toISOString()
-      : '-');
+      : '-';
 
   // --- Render ---
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="pl-[260px]">
+      <div className="">
         {/* Header */}
         <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/70 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
@@ -224,7 +220,7 @@ export default function DashboardPage() {
               <select
                 className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600"
                 value={selectedRepoId ?? ''}
-                onChange={(e) => setSelectedRepoId(Number(e.target.value))}
+                onChange={(e) => setSelectedRepoId(e.target.value)}
               >
                 {repos.map((r) => (
                   <option key={r.id} value={r.id}>

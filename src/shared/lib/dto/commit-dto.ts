@@ -1,41 +1,28 @@
-export interface CommitAuthor {
-    name: string;
-    email: string;
-    date: string; // ISO date-time
+export interface CommitAuthorInfo {
+    name: string | null;
+    email: string | null;
+    date: string | null;
 }
 
-export interface CommitCommitter {
-    name: string;
-    email: string;
-    date: string; // ISO date-time
-}
-
-export interface CommitInfo {
+export interface CommitCore {
     message: string;
-    author: CommitAuthor;
-    committer: CommitCommitter;
+    author: CommitAuthorInfo | null;
+    committer: CommitAuthorInfo | null;
 }
 
-export interface AuthorInfo {
-    login: string;
-}
-
-export interface CommitterInfo {
-    login: string;
-}
-
-export interface ParentInfo {
-    sha: string;
-}
-
-// Asıl CommitDto – OpenAPI şemasına göre
 export interface CommitDto {
+    // DB alanları
+    id?: number;
     sha: string;
-    node_id: string;
-    commit: CommitInfo;
-    author: AuthorInfo | null;
-    committer: CommitterInfo | null;
-    parents: ParentInfo[];
-    html_url: string;
-    url: string;
+
+    // GitHub commit objesi
+    commit: CommitCore;
+
+    // Login bilgileri
+    author?: { login?: string | null } | null;
+    committer?: { login?: string | null } | null;
+
+    // URL’ler
+    htmlUrl?: string | null;
+    html_url?: string | null;
 }

@@ -1,35 +1,30 @@
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '@/shared/contexts/AuthContext';
+// src/shared/components/ProtectedRoute.tsx
+import type { ReactNode } from "react";
+import { Navigate, Outlet } from "react-router-dom";
+import { useAuth } from "@/shared/contexts/AuthContext";
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-}
+type ProtectedRouteProps = {
+  children?: ReactNode;
+};
 
-/**
- * Protected Route Component
- * Authenticated kullanıcılar için route'ları korur
- * Eğer kullanıcı authenticated değilse login sayfasına yönlendirir
- */
-export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { isAuthenticated, isLoading } = useAuth();
+export default function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { user, isLoading } = useAuth();
 
-  // Loading state - authentication kontrolü yapılıyor
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="text-gray-600">Loading...</div>
-        </div>
+      <div className="flex min-h-screen items-center justify-center text-slate-500">
+        Loading...
       </div>
     );
   }
 
-  // Not authenticated - redirect to login
-  if (!isAuthenticated) {
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // Authenticated - render children
-  return <>{children}</>;
-};
+  // Eski kullanım: <ProtectedRoute><DashboardPage /></ProtectedRoute>
+  if (children) return <>{children}</>;
 
+  // Yeni kullanım: nested route + Outlet
+  return <Outlet />;
+}

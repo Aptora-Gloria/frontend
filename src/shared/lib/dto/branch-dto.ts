@@ -1,4 +1,4 @@
 export interface BranchDto {
-    name: string;      // branch name
-    repo_id: number;   // repository ID
+    name: string;
+    repo_id: number;
 }

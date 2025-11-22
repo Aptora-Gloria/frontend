@@ -1,10 +1,5 @@
-// src/shared / lib / dto / repo - dto.ts
-
-import type { Repo } from '@/entities/repo';
-import { number } from 'framer-motion';
-
 export interface RepoDto {
-    id: string;
+    id: number;
     githubRepoId: number;
     name: string;
     fullName: string;
@@ -12,28 +7,17 @@ export interface RepoDto {
     htmlUrl: string;
     isPrivate: boolean;
     isFork: boolean;
-    stars: number;
-    watchers: number;
-    forks: number;
-    openIssues: number;
+    stargazersCount: number;
+    watchersCount: number;
+    forksCount: number;
+    openIssuesCount: number;
     size: number;
     language: string | null;
+    defaultBranch: string | null;
+    createdAt: string;    // OffsetDateTime → ISO string
+    updatedAt: string;
+    pushedAt: string;
+    ownerLogin: string;
+    ownerType: string;    // backend OwnerType enum’unun string hali
+    lastSyncedAt: string | null;
 }
-
-export const mapRepoDtoToEntity = (dto: RepoDto): Repo => ({
-    id: Number(dto.id),
-    githubId: dto.githubRepoId,
-    name: dto.name,
-    fullName: dto.fullName,
-    description: dto.description ?? '',
-    htmlUrl: dto.htmlUrl,
-    isPrivate: dto.isPrivate,
-    isFork: dto.isFork,
-    stargazersCount: dto.stars,
-    watchersCount: dto.watchers,
-    forksCount: dto.forks,
-    openIssuesCount: dto.openIssues,
-    size: dto.size,
-    language: dto.language ?? '',
-    defaultBranch: 'main', // backend verince değiştirirsin
-});
