@@ -1,4 +1,6 @@
+// src/pages/repositories/RepositoriesPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
+import { getUserRepos, initUserRepos } from '@/shared/lib/repo-api';
 import {
     Building2,
     CalendarDays,
@@ -11,7 +13,6 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { getUserRepos } from '@/shared/lib/repo-api';
 import type { Repo } from '@/entities/repo';
 
 /* ---------- Types ---------- */
@@ -68,7 +69,7 @@ const RepositoriesPage: React.FC = () => {
 
     // filters
     const [orgFilter, setOrgFilter] = useState<OrgFilter>('all');
-    const [rangeFilter, setRangeFilter] = useState<RangeFilter>('30d');
+    const [rangeFilter, setRangeFilter] = useState<RangeFilter>('all');
     const [langFilter, setLangFilter] = useState<'all' | string>('all');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [sortBy, setSortBy] = useState<SortBy>('activity');
@@ -84,11 +85,21 @@ const RepositoriesPage: React.FC = () => {
     // reposu çek
     useEffect(() => {
         const fetchRepos = async () => {
-            if (!user?.login) return;
+            if (!user) return;
+
             try {
                 setIsLoading(true);
                 setError(null);
-                const data = await getUserRepos(user.login);
+
+                // 1) Önce DB’den oku (user + org repos)
+                let data = await getUserRepos(); // backend JWT’den login okuyacak
+
+                // 2) Hiç repo yoksa init et, sonra tekrar oku
+                if (!data.length) {
+                    await initUserRepos();
+                    data = await getUserRepos();
+                }
+
                 setRepos(data);
             } catch (e) {
                 console.error('❌ Failed to load repos:', e);
@@ -99,20 +110,33 @@ const RepositoriesPage: React.FC = () => {
         };
 
         fetchRepos();
-    }, [user?.login]);
+    }, [user]);
 
-    // org & language seçenekleri
-    const orgOptions = useMemo(() => {
-        const s = new Set<string>();
-        repos.forEach((r) => s.add(getOrgFromRepo(r)));
-        return Array.from(s).sort();
-    }, [repos]);
+    // ---- ORGANIZATION & LANGUAGE OPTIONS (HATALI KISIM BURASIYDI) ----
+    const orgOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    repos
+                        .map((r) => getOrgFromRepo(r))
+                        .filter((org) => org && org !== 'unknown'),
+                ),
+            ).sort(),
+        [repos],
+    );
 
-    const langOptions = useMemo(() => {
-        const s = new Set<string>();
-        repos.forEach((r) => r.language && s.add(r.language));
-        return Array.from(s).sort();
-    }, [repos]);
+    const langOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    repos
+                        .map((r) => r.language)
+                        .filter((lang): lang is string => Boolean(lang)),
+                ),
+            ).sort(),
+        [repos],
+    );
+    // ------------------------------------------------------------------
 
     // filtre + sort
     const filteredRepos = useMemo(() => {
@@ -142,7 +166,8 @@ const RepositoriesPage: React.FC = () => {
         // language
         if (langFilter !== 'all') {
             result = result.filter(
-                (r) => (r.language || '').toLowerCase() === langFilter.toLowerCase(),
+                (r) =>
+                    (r.language || '').toLowerCase() === langFilter.toLowerCase(),
             );
         }
 

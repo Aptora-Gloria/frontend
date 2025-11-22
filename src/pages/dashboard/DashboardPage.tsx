@@ -27,8 +27,8 @@ import {
 } from 'recharts';
 
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { getUserRepos } from '@/shared/lib/repo-api';
-import { queryCommits } from '@/shared/lib/commit-api';
+import { getUserRepos, initUserRepos } from '@/shared/lib/repo-api';
+import { queryCommits, initCommits } from '@/shared/lib/commit-api';
 
 import type { Repo } from '@/entities/repo';
 import type { Commit } from '@/entities/commit';
@@ -123,11 +123,20 @@ export default function DashboardPage() {
   // --- 1) Kullanıcının reposunu çek ---
   useEffect(() => {
     const fetchRepos = async () => {
-      if (!user?.login) return;
+      if (!user) return;
 
       try {
         setIsLoadingRepos(true);
-        const data = await getUserRepos(user.login);
+
+        // 1) Önce DB’den oku
+        let data = await getUserRepos(); // <-- body yok: user + org tüm repos
+
+        // 2) Hiç repo yoksa bir kere init et, sonra tekrar oku
+        if (data.length === 0) {
+          await initUserRepos();
+          data = await getUserRepos();
+        }
+
         setRepos(data);
 
         if (data.length > 0 && !selectedRepoId) {
@@ -141,7 +150,7 @@ export default function DashboardPage() {
     };
 
     fetchRepos();
-  }, [user?.login, selectedRepoId]);
+  }, [user, selectedRepoId]);
 
   // --- 2) Seçili repo için commitleri getir ---
   useEffect(() => {
@@ -158,9 +167,14 @@ export default function DashboardPage() {
         const fullName = selectedRepo.fullName;
         const branchName = selectedRepo.defaultBranch || 'main';
 
-        // ⬇⬇⬇ ÖNEMLİ DEĞİŞİKLİK: obje yerine iki string parametre
-        const repoCommits = await queryCommits(fullName, branchName);
-        // ⬆⬆⬆
+        // 1. DB'den oku
+        let repoCommits = await queryCommits(fullName, branchName);
+
+        // 2. Boşsa init et ve tekrar oku
+        if (!repoCommits.length) {
+          await initCommits(fullName, branchName);
+          repoCommits = await queryCommits(fullName, branchName);
+        }
 
         setCommits(repoCommits);
 
