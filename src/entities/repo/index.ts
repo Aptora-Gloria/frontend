@@ -1,49 +1,65 @@
-import type { RepoDto } from '@shared/lib/dto/repo-dto';
+// src/entities/repo/index.ts
 
-export type Repo = {
+import type { RepoDto } from '@/shared/lib/dto/repo-dto';
+
+export interface Repo {
     id: string;
-    githubRepoId: number;
+    githubId: number;
+
     name: string;
     fullName: string;
-    description: string;
+    description: string | null;
     htmlUrl: string;
+
     isPrivate: boolean;
     isFork: boolean;
+
     stargazers: number;
     watchers: number;
     forks: number;
     openIssues: number;
     size: number;
-    language: string;
-    defaultBranch: string;
-    createdAt: string;
-    updatedAt: string;
-    pushedAt: string;
-    ownerLogin: string;
-    ownerType: string;
+
+    language: string | null;
+    defaultBranch: string | null;
+
+    createdAt: string | null;
+    updatedAt: string | null;
+    pushedAt: string | null;
+
+    ownerLogin: string | null;
+    ownerType: string | null;
+
     lastSyncedAt: string | null;
-};
+}
 
 export const mapRepoDtoToEntity = (dto: RepoDto): Repo => ({
     id: String(dto.id),
-    githubRepoId: dto.githubRepoId,
+    githubId: dto.githubRepoId,
+
     name: dto.name,
     fullName: dto.fullName,
-    description: dto.description ?? '',
+    description: dto.description ?? null,
     htmlUrl: dto.htmlUrl,
+
     isPrivate: dto.isPrivate,
     isFork: dto.isFork,
+
     stargazers: dto.stargazersCount,
     watchers: dto.watchersCount,
     forks: dto.forksCount,
     openIssues: dto.openIssuesCount,
     size: dto.size,
-    language: dto.language ?? 'Unknown',
-    defaultBranch: dto.defaultBranch ?? 'main',
-    createdAt: dto.createdAt,
-    updatedAt: dto.updatedAt,
-    pushedAt: dto.pushedAt,
-    ownerLogin: dto.ownerLogin,
-    ownerType: dto.ownerType,
-    lastSyncedAt: dto.lastSyncedAt ?? null
+
+    language: dto.language ?? null,
+    defaultBranch: dto.defaultBranch ?? null,
+
+    createdAt: dto.createdAt ?? null,
+    updatedAt: dto.updatedAt ?? null,
+    pushedAt: dto.pushedAt ?? null,
+
+    ownerLogin: dto.ownerLogin ?? null,
+    ownerType: dto.ownerType ?? null,
+
+    lastSyncedAt: dto.lastSyncedAt ?? null,
 });

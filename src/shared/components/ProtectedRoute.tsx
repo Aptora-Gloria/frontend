@@ -1,30 +1,24 @@
 // src/shared/components/ProtectedRoute.tsx
-import type { ReactNode } from "react";
-import { Navigate, Outlet } from "react-router-dom";
-import { useAuth } from "@/shared/contexts/AuthContext";
 
-type ProtectedRouteProps = {
-  children?: ReactNode;
-};
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '@/shared/contexts/AuthContext';
 
-export default function ProtectedRoute({ children }: ProtectedRouteProps) {
+const ProtectedRoute = () => {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-slate-500">
-        Loading...
+        Loading…
       </div>
     );
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
-  // Eski kullanım: <ProtectedRoute><DashboardPage /></ProtectedRoute>
-  if (children) return <>{children}</>;
-
-  // Yeni kullanım: nested route + Outlet
   return <Outlet />;
-}
+};
+
+export default ProtectedRoute;
