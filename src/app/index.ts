@@ -1,2 +1,2 @@
-// App shell exports
-export { default } from './App';
+// src/app/index.ts
+export { default as App } from './App';

@@ -1,62 +1,74 @@
 // src/app/App.tsx
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import AppLayout from "./AppLayout";
-import ProtectedRoute from "@/shared/components/ProtectedRoute";
+import { Routes, Route, Navigate } from 'react-router-dom';
+
 import {
   DashboardPage,
   LoginPage,
   AuthCallbackPage,
   RepositoriesPage,
+  RepoDetailPage,
   ProfilePage,
-} from "@/pages";
+} from '@/pages';
+import { ProtectedRoute } from '@/shared/components';
+import AppLayout from './AppLayout';
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+    <Routes>
+      {/* Login */}
+      <Route path="/" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-        {/* Protected + layout */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AppLayout />}>
-            {/* default route */}
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/repositories" element={<RepositoriesPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
+      {/* Dashboard */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <DashboardPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
 
-            {/* Placeholderlar */}
-            <Route
-              path="/organizations"
-              element={
-                <div className="px-6 py-8 text-slate-500">
-                  Organizations placeholder
-                </div>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <div className="px-6 py-8 text-slate-500">
-                  Settings placeholder
-                </div>
-              }
-            />
-          </Route>
-        </Route>
+      {/* Repositories list */}
+      <Route
+        path="/repositories"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <RepositoriesPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
 
-        {/* 404 */}
-        <Route
-          path="*"
-          element={
-            <div className="flex min-h-screen items-center justify-center text-slate-500">
-              404 – Page not found
-            </div>
-          }
-        />
-      </Routes>
-    </BrowserRouter>
+      {/* Repo detail */}
+      <Route
+        path="/repositories/:repoId"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <RepoDetailPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Profile */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <ProfilePage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* unknown route -> dashboard */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
   );
 }

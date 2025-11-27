@@ -1,10 +1,14 @@
 import { useEffect, useState, KeyboardEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Github } from 'lucide-react';
 import { buildGitHubAuthUrl } from '../../features/auth-login/lib/buildGitHubAuthUrl';
+import { useAuth } from '@/shared/contexts/AuthContext';
 
 export const LoginPage = () => {
   const [dark] = useState(false);
+  const navigate = useNavigate();
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -14,6 +18,13 @@ export const LoginPage = () => {
       root.classList.remove('dark');
     }
   }, [dark]);
+
+  // Eğer kullanıcı zaten authenticated ise dashboard'a yönlendir
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isLoading, isAuthenticated, navigate]);
 
   const refreshPage = () => {
     window.location.reload();

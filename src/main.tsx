@@ -1,14 +1,19 @@
 // src/main.tsx
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./app";
-import "./index.css";
-import { AuthProvider } from "@/shared/contexts/AuthContext";
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+import { AuthProvider } from '@/shared/contexts/AuthContext';
+import App from './app/App';
+
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <AuthProvider>
-      <App />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </AuthProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

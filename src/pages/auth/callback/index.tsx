@@ -14,6 +14,7 @@ export const AuthCallbackPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const hasHandledAuth = useRef(false); // handleAuth'ın sadece bir kez çalışmasını sağla
+  const hasNavigated = useRef(false); // Navigate'in sadece bir kez çalışmasını sağla
 
   useEffect(() => {
     // Eğer zaten handle edildiyse tekrar çalışma
@@ -23,7 +24,7 @@ export const AuthCallbackPage = () => {
 
     // If already authenticated and no code, redirect to dashboard
     if (!authLoading && isAuthenticated && !code && !errorParam) {
-      navigate(ROUTES.HOME, { replace: true });
+      navigate('/dashboard', { replace: true });
       return;
     }
 
@@ -75,8 +76,8 @@ export const AuthCallbackPage = () => {
         // to ensure user data is loaded before navigation
         await setAuthToken(response.accessToken);
         
-        // Use replace to avoid adding to history
-        navigate(ROUTES.HOME, { replace: true });
+        // setIsLoading false yap, isAuthenticated useEffect'i navigate edecek
+        setIsLoading(false);
       } catch (err: unknown) {
         console.error('Auth callback failed:', err);
         console.error('Error details:', {
@@ -140,6 +141,14 @@ export const AuthCallbackPage = () => {
     handleAuth();
   }, [code, errorParam, params, authLoading, isAuthenticated, navigate, setAuthToken, logout]);
 
+  // isAuthenticated true olduğunda ve loading bittiğinde dashboard'a yönlendir
+  useEffect(() => {
+    if (!isLoading && !authLoading && isAuthenticated && !error && !hasNavigated.current) {
+      hasNavigated.current = true;
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isLoading, authLoading, isAuthenticated, error, navigate]);
+
   if (isLoading) {
     return (
       <main className="p-6">
@@ -162,7 +171,7 @@ export const AuthCallbackPage = () => {
               onClick={() => {
                 // Ensure tokens are cleared before navigating
                 localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-                navigate(ROUTES.HOME, { replace: true });
+                navigate('/dashboard', { replace: true });
               }}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2"
             >
@@ -172,7 +181,7 @@ export const AuthCallbackPage = () => {
               onClick={() => {
                 // Clear everything and reload to start fresh
                 localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-                window.location.href = ROUTES.HOME;
+                window.location.href = '/';
               }}
               className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
             >
