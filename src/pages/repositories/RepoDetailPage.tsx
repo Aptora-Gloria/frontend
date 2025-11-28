@@ -1,6 +1,6 @@
 // src/pages/repositories/RepoDetailPage.tsx
-import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     ExternalLink,
     RefreshCw,
@@ -14,22 +14,15 @@ import {
     Search,
 } from 'lucide-react';
 
-/* ---------- Types ---------- */
-type RepoBasics = {
-    id: number;
-    name: string;
-    description: string;
-    language: string;
-    stars: number;
-    forks: number;
-    watchers: number;
-    openIssues: number;
-    sizeMB: number;
-    defaultBranch: string;
-    htmlUrl: string;
-    lastUpdated: string;
-};
+import type { Repo } from '@/entities/repo';
+import type { Commit } from '@/entities/commit';
+import type { Branch } from '@/entities/branch';
 
+import { getUserRepos } from '@/shared/lib/repo-api';
+import { getBranchesByRepo, initBranchesByRepo } from '@/shared/lib/branch-api';
+import { initCommits, queryCommits } from '@/shared/lib/commit-api';
+
+/* ---------- UI Types ---------- */
 type CommitItem = {
     sha: string;
     message: string;
@@ -40,79 +33,17 @@ type CommitItem = {
 };
 
 type BranchItem = {
-    id: number;
+    id: string;
     name: string;
     isDefault?: boolean;
     lastCommitAt?: string;
+    // 👇 yeni alan: son commit mesajı
+    lastCommitMessage?: string;
 };
 
 type LanguageShare = { name: string; percent: number; color: string };
 
-/* ---------- Mock Data (şimdilik statik) ---------- */
-const REPO: RepoBasics = {
-    id: 2,
-    name: 'Aptora-Gloria/backend',
-    description: 'Core backend services and REST APIs for Optimeric.',
-    language: 'Java',
-    stars: 12,
-    forks: 4,
-    watchers: 6,
-    openIssues: 3,
-    sizeMB: 42,
-    defaultBranch: 'master',
-    htmlUrl: 'https://github.com/Aptora-Gloria/backend',
-    lastUpdated: '2025-11-10 17:10',
-};
-
-const COMMITS: CommitItem[] = [
-    {
-        sha: 'a1b2c3d',
-        message: 'apikey hidden + cleanup',
-        author: 'arifferarslan',
-        date: '52m ago',
-        url: '#',
-        branch: 'master',
-    },
-    {
-        sha: 'b2c3d4e',
-        message: 'refactor: service layer',
-        author: 'tahir',
-        date: '5m ago',
-        url: '#',
-        branch: 'master',
-    },
-    {
-        sha: 'c3d4e5f',
-        message: 'fix: cmake warnings',
-        author: 'burak',
-        date: '22m ago',
-        url: '#',
-        branch: 'develop',
-    },
-    {
-        sha: 'd4e5f6g',
-        message: 'docs: api notes',
-        author: 'selin',
-        date: '25m ago',
-        url: '#',
-        branch: 'develop',
-    },
-    {
-        sha: 'e5f6g7h',
-        message: 'login card polish',
-        author: 'oguzhan',
-        date: '5m ago',
-        url: '#',
-        branch: 'feature/ui',
-    },
-];
-
-const BRANCHES: BranchItem[] = [
-    { id: 10, name: 'master', isDefault: true, lastCommitAt: '52m ago' },
-    { id: 11, name: 'develop', isDefault: false, lastCommitAt: '3d ago' },
-    { id: 12, name: 'feature/ui', isDefault: false, lastCommitAt: '5m ago' },
-];
-
+/* ---------- Şimdilik statik language verisi ---------- */
 const LANGUAGES: LanguageShare[] = [
     { name: 'Java', percent: 56, color: '#F97316' },
     { name: 'C++', percent: 22, color: '#A78BFA' },
@@ -135,21 +66,208 @@ const Avatar: React.FC<{ name: string }> = ({ name }) => (
     </div>
 );
 
+// Branch entity'si backend’den farklı şekillerde gelebileceği için any üzerinden
+// olası property isimlerini tek yerde topluyoruz.
+function mapBranchToItem(b: Branch, defaultBranch?: string): BranchItem {
+    const anyB = b as any;
+    const name: string = anyB.name ?? '';
+
+    const lastCommitAt =
+        anyB.lastCommitAt ??
+        anyB.latestCommitAt ??
+        (anyB.commit?.committedAt
+            ? new Date(anyB.commit.committedAt).toLocaleString()
+            : undefined);
+
+    const lastCommitMessage: string | undefined =
+        // backend branch tablosunda olabilir
+        anyB.lastCommitMessage ??
+        anyB.latestCommitMessage ??
+        // commit alanı embed edilmişse
+        anyB.commit?.message ??
+        undefined;
+
+    return {
+        id: String(anyB.id ?? name),
+        name,
+        isDefault: defaultBranch ? name === defaultBranch : undefined,
+        lastCommitAt,
+        lastCommitMessage,
+    };
+}
+
+function mapCommitToItem(c: Commit, branchName: string): CommitItem {
+    const anyC = c as any;
+    return {
+        sha: anyC.sha ?? '',
+        message: anyC.message ?? '',
+        author: anyC.authorLogin || anyC.authorName || 'unknown',
+        date: anyC.committedAt ? new Date(anyC.committedAt).toLocaleString() : '',
+        url: anyC.htmlUrl || anyC.url || '#',
+        branch: branchName,
+    };
+}
+
 /* ---------- Page ---------- */
 const RepoDetailPage: React.FC = () => {
     const { repoId } = useParams<{ repoId: string }>();
+    const location = useLocation();
+    const state = location.state as { repo?: Repo } | null;
+
+    const [repo, setRepo] = useState<Repo | null>(state?.repo ?? null);
+    const [isLoadingRepo, setIsLoadingRepo] = useState(false);
+    const [repoError, setRepoError] = useState<string | null>(null);
+
+    const [branches, setBranches] = useState<BranchItem[]>([]);
+    const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+    const [branchesError, setBranchesError] = useState<string | null>(null);
+
+    const [commits, setCommits] = useState<CommitItem[]>([]);
+    const [isLoadingCommits, setIsLoadingCommits] = useState(false);
+    const [commitsError, setCommitsError] = useState<string | null>(null);
 
     const [activeTab, setActiveTab] =
         useState<'overview' | 'commits' | 'branches' | 'languages'>('overview');
     const [branchFilter, setBranchFilter] = useState<string>('all');
 
-    const filteredCommits = useMemo(
-        () =>
-            branchFilter === 'all'
-                ? COMMITS
-                : COMMITS.filter((c) => c.branch === branchFilter),
-        [branchFilter],
-    );
+    /* ---------- 1) Repo'yu bul ---------- */
+    useEffect(() => {
+        if (repo || !repoId) return;
+
+        const fetchRepo = async () => {
+            try {
+                setIsLoadingRepo(true);
+                setRepoError(null);
+                const all = await getUserRepos();
+                const found =
+                    all.find((r) => String(r.id) === String(repoId)) ?? null;
+                if (!found) {
+                    setRepoError('Repository not found.');
+                }
+                setRepo(found);
+            } catch (e) {
+                console.error('❌ Failed to load repo:', e);
+                setRepoError('Repository could not be loaded.');
+            } finally {
+                setIsLoadingRepo(false);
+            }
+        };
+
+        fetchRepo();
+    }, [repo, repoId]);
+
+    /* ---------- 2) Branchleri init + query ---------- */
+    useEffect(() => {
+        if (!repo?.fullName) return;
+
+        const loadBranches = async () => {
+            try {
+                setIsLoadingBranches(true);
+                setBranchesError(null);
+
+                // 1) Önce DB’den oku
+                let branchEntities = await getBranchesByRepo(repo.fullName);
+
+                // 2) Hiç yoksa init et, sonra tekrar oku (Postman flow’u)
+                if (!branchEntities.length) {
+                    await initBranchesByRepo(repo.fullName);
+                    branchEntities = await getBranchesByRepo(repo.fullName);
+                }
+
+                const mapped = branchEntities.map((b) =>
+                    mapBranchToItem(b, repo.defaultBranch ?? undefined),
+                );
+                setBranches(mapped);
+            } catch (err) {
+                console.error('❌ Failed to load branches', err);
+                setBranches([]);
+                setBranchesError('Branches could not be loaded.');
+            } finally {
+                setIsLoadingBranches(false);
+            }
+        };
+
+        loadBranches();
+    }, [repo]);
+
+    /* ---------- 3) Commitleri init + query ---------- */
+    useEffect(() => {
+        if (!repo?.fullName || branches.length === 0) return;
+
+        const fetchCommits = async () => {
+            try {
+                setIsLoadingCommits(true);
+                setCommitsError(null);
+
+                const fullName = repo.fullName;
+
+                const targetBranches =
+                    branchFilter === 'all'
+                        ? branches.map((b) => b.name)
+                        : [branchFilter];
+
+                const all: CommitItem[] = [];
+
+                for (const br of targetBranches) {
+                    // init
+                    await initCommits(fullName, br);
+                    // query
+                    const commitEntities: Commit[] = await queryCommits(
+                        fullName,
+                        br,
+                    );
+                    all.push(...commitEntities.map((c) => mapCommitToItem(c, br)));
+                }
+
+                // tarihe göre sort (string olduğundan çok takılma, UI için yeterli)
+                all.sort((a, b) => (a.date < b.date ? 1 : -1));
+
+                setCommits(all);
+            } catch (e) {
+                console.error('❌ Failed to load commits:', e);
+                setCommits([]);
+                setCommitsError('Commits could not be loaded.');
+            } finally {
+                setIsLoadingCommits(false);
+            }
+        };
+
+        fetchCommits();
+    }, [repo?.fullName, branches, branchFilter]);
+
+    /* ---------- Derived values ---------- */
+    const lastUpdatedLabel = useMemo(() => {
+        if (!repo) return '—';
+        const src = repo.pushedAt || repo.updatedAt || repo.createdAt;
+        if (!src) return '—';
+        const d = new Date(src);
+        return d.toLocaleString();
+    }, [repo]);
+
+    const repoLanguage = repo?.language ?? 'Unknown';
+    const stars = repo?.stargazers ?? 0;
+    const forks = repo?.forks ?? 0;
+    const watchers = repo?.watchers ?? 0;
+    const openIssues = repo?.openIssues ?? 0;
+    const sizeMB = repo?.size ? Math.round(repo.size / 1024) : 0;
+
+    /* ---------- Render ---------- */
+
+    if (isLoadingRepo && !repo) {
+        return (
+            <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
+                Loading repository…
+            </div>
+        );
+    }
+
+    if (!repo) {
+        return (
+            <div className="flex min-h-screen items-center justify-center text-sm text-red-500">
+                {repoError ?? 'Repository not found.'}
+            </div>
+        );
+    }
 
     return (
         <>
@@ -159,11 +277,12 @@ const RepoDetailPage: React.FC = () => {
                     <div className="flex flex-col text-sm">
                         <span className="text-xs text-slate-500">Repositories</span>
                         <span className="font-medium text-slate-800">
-                            {REPO.name}
-                            {repoId ? ` (id: ${repoId})` : ''}
+                            {repo.fullName ?? repo.name}
                         </span>
                     </div>
-                    <div className="text-xs text-slate-500">Repo detail preview</div>
+                    <div className="text-xs text-slate-500">
+                        Last updated: {lastUpdatedLabel}
+                    </div>
                 </div>
             </header>
 
@@ -175,35 +294,39 @@ const RepoDetailPage: React.FC = () => {
                             {/* left */}
                             <div className="min-w-0">
                                 <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900">
-                                    {REPO.name}
+                                    {repo.fullName ?? repo.name}
                                 </h1>
-                                <p className="mt-1 text-slate-600">{REPO.description}</p>
+                                {repo.description && (
+                                    <p className="mt-1 text-slate-600">
+                                        {repo.description}
+                                    </p>
+                                )}
 
                                 <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                                    <ChipDot label={REPO.language} color="#F97316" />
+                                    <ChipDot label={repoLanguage} color="#F97316" />
                                     <Chip
                                         icon={<Star className="h-4 w-4" />}
-                                        label={`${REPO.stars} stars`}
+                                        label={`${stars} stars`}
                                     />
                                     <Chip
                                         icon={<GitFork className="h-4 w-4" />}
-                                        label={`${REPO.forks} forks`}
+                                        label={`${forks} forks`}
                                     />
                                     <Chip
                                         icon={<Eye className="h-4 w-4" />}
-                                        label={`${REPO.watchers} watchers`}
+                                        label={`${watchers} watchers`}
                                     />
                                     <Chip
                                         icon={<AlertCircle className="h-4 w-4" />}
-                                        label={`${REPO.openIssues} open issues`}
+                                        label={`${openIssues} open issues`}
                                     />
                                     <Chip
                                         icon={<Info className="h-4 w-4" />}
-                                        label={`${REPO.sizeMB} MB`}
+                                        label={`${sizeMB} MB`}
                                     />
                                     <Chip
                                         icon={<GitBranchIcon className="h-4 w-4" />}
-                                        label={`default: ${REPO.defaultBranch}`}
+                                        label={`default: ${repo.defaultBranch ?? '-'}`}
                                     />
                                 </div>
                             </div>
@@ -212,7 +335,7 @@ const RepoDetailPage: React.FC = () => {
                             <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
                                 <PillButton
                                     as="a"
-                                    href={REPO.htmlUrl}
+                                    href={repo.htmlUrl ?? '#'}
                                     target="_blank"
                                     rel="noreferrer"
                                 >
@@ -220,34 +343,38 @@ const RepoDetailPage: React.FC = () => {
                                     View on GitHub
                                 </PillButton>
                                 <PillButton
-                                    onClick={() =>
-                                        alert('Sync Branches (POST /api/github/branches/init)')
-                                    }
+                                    onClick={async () => {
+                                        if (!repo.fullName) return;
+                                        await initBranchesByRepo(repo.fullName);
+                                        await getBranchesByRepo(repo.fullName);
+                                        // sonra useEffect zaten tekrar tetikleniyor
+                                    }}
                                 >
                                     <RefreshCw className="h-4 w-4" />
                                     Sync Branches
                                 </PillButton>
                                 <PillButton
-                                    onClick={() =>
-                                        alert('Sync Commits (POST /api/github/commits/init)')
-                                    }
+                                    onClick={async () => {
+                                        if (!repo.fullName || branches.length === 0) return;
+                                        const targetBranches =
+                                            branchFilter === 'all'
+                                                ? branches.map((b) => b.name)
+                                                : [branchFilter];
+                                        for (const br of targetBranches) {
+                                            await initCommits(repo.fullName, br);
+                                            await queryCommits(repo.fullName, br);
+                                        }
+                                    }}
                                 >
                                     <RefreshCw className="h-4 w-4" />
                                     Sync Commits
-                                </PillButton>
-                                <PillButton
-                                    onClick={() =>
-                                        alert('Sync Languages (POST /api/github/languages/init)')
-                                    }
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Sync Languages
                                 </PillButton>
                             </div>
                         </div>
 
                         <div className="mt-2 text-right text-xs text-slate-500">
-                            Last Sync: Today 11:20
+                            Last Sync (commits):{' '}
+                            {isLoadingCommits ? 'Syncing…' : 'via dashboard-style view'}
                         </div>
                     </section>
 
@@ -276,27 +403,40 @@ const RepoDetailPage: React.FC = () => {
                                 label="Languages"
                             />
                             <div className="ml-auto pr-1 text-xs text-slate-500">
-                                Last Sync: Today 11:20
+                                Last Updated: {lastUpdatedLabel}
                             </div>
                         </div>
 
                         {/* content */}
                         <div className="border-t border-slate-200 p-4">
-                            {activeTab === 'overview' && <OverviewTab repo={REPO} />}
+                            {activeTab === 'overview' && (
+                                <OverviewTab
+                                    lastUpdated={lastUpdatedLabel}
+                                    defaultBranch={repo.defaultBranch ?? '-'}
+                                    branchesCount={branches.length}
+                                    commitsCount={commits.length}
+                                />
+                            )}
+
                             {activeTab === 'commits' && (
                                 <CommitsTab
-                                    commits={filteredCommits}
-                                    branches={BRANCHES}
+                                    commits={commits}
+                                    branches={branches}
                                     branchFilter={branchFilter}
                                     setBranchFilter={setBranchFilter}
+                                    isLoading={isLoadingCommits || isLoadingBranches}
+                                    error={commitsError || branchesError}
                                 />
                             )}
+
                             {activeTab === 'branches' && (
                                 <BranchesTab
-                                    branches={BRANCHES}
-                                    defaultBranch={REPO.defaultBranch}
+                                    branches={branches}
+                                    defaultBranch={repo.defaultBranch ?? 'main'}
+                                    repoId={repo.id}
                                 />
                             )}
+
                             {activeTab === 'languages' && (
                                 <LanguagesTab languages={LANGUAGES} />
                             )}
@@ -374,12 +514,18 @@ const TabPill: React.FC<{
 );
 
 /* ---------- Tabs ---------- */
-const OverviewTab: React.FC<{ repo: RepoBasics }> = ({ repo }) => {
+
+const OverviewTab: React.FC<{
+    branchesCount: number;
+    commitsCount: number;
+    lastUpdated: string;
+    defaultBranch: string;
+}> = ({ branchesCount, commitsCount, lastUpdated, defaultBranch }) => {
     const kpis = [
-        { label: 'Branches', value: '3' },
-        { label: 'Commits (30d)', value: '125' },
-        { label: 'Last Updated', value: repo.lastUpdated },
-        { label: 'Default Branch', value: repo.defaultBranch },
+        { label: 'Branches', value: String(branchesCount) },
+        { label: 'Commits (loaded)', value: String(commitsCount) },
+        { label: 'Last Updated', value: lastUpdated },
+        { label: 'Default Branch', value: defaultBranch },
     ];
     return (
         <div className="space-y-4">
@@ -397,8 +543,8 @@ const OverviewTab: React.FC<{ repo: RepoBasics }> = ({ repo }) => {
                 ))}
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-500">
-                Owner/Org context placeholder • Keep dashboard-style spacing and soft
-                visuals.
+                Owner/Org context placeholder • Keep dashboard-style spacing and
+                soft visuals.
             </div>
         </div>
     );
@@ -409,6 +555,8 @@ const CommitsTab: React.FC<{
     branches: BranchItem[];
     branchFilter: string;
     setBranchFilter: (b: string) => void;
+    isLoading?: boolean;
+    error?: string | null;
 }> = ({ commits, branches, branchFilter, setBranchFilter }) => {
     return (
         <div className="grid gap-4 lg:grid-cols-5">
@@ -437,36 +585,38 @@ const CommitsTab: React.FC<{
                         </select>
                     </div>
 
-                    <ul className="mt-3 divide-y divide-slate-200">
-                        {commits.map((c) => (
-                            <li key={c.sha} className="flex items-center gap-3 py-3">
-                                <Avatar name={c.author} />
-                                <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-slate-800">
-                                        {c.message}
+                    <div className="mt-3 max-h-80 overflow-y-auto pr-1">
+                        <ul className="divide-y divide-slate-200">
+                            {commits.map((c) => (
+                                <li key={c.sha} className="flex items-center gap-3 py-3">
+                                    <Avatar name={c.author} />
+                                    <div className="min-w-0">
+                                        <div className="truncate text-sm font-medium text-slate-800">
+                                            {c.message}
+                                        </div>
+                                        <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                                            <span>{c.date}</span>
+                                            {c.branch === 'master' && (
+                                                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 ring-1 ring-emerald-200">
+                                                    Default
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-                                        <span>{c.date}</span>
-                                        {c.branch === 'master' && (
-                                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 ring-1 ring-emerald-200">
-                                                Default
-                                            </span>
-                                        )}
+                                    <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
+                                        <span className="font-mono">{c.sha}</span>
+                                        <a
+                                            href={c.url}
+                                            className="text-slate-400 hover:text-slate-600"
+                                            title="Open on GitHub"
+                                        >
+                                            <ExternalLink className="h-4 w-4" />
+                                        </a>
                                     </div>
-                                </div>
-                                <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-                                    <span className="font-mono">{c.sha}</span>
-                                    <a
-                                        href={c.url}
-                                        className="text-slate-400 hover:text-slate-600"
-                                        title="Open on GitHub"
-                                    >
-                                        <ExternalLink className="h-4 w-4" />
-                                    </a>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                 </div>
             </div>
 
@@ -485,7 +635,9 @@ const CommitsTab: React.FC<{
                             >
                                 <span className="inline-flex items-center gap-2">
                                     <GitBranchIcon className="h-4 w-4 text-slate-500" />
-                                    <span className="font-medium text-slate-800">{b.name}</span>
+                                    <span className="font-medium text-slate-800">
+                                        {b.name}
+                                    </span>
                                     {b.isDefault && (
                                         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 ring-1 ring-emerald-200">
                                             Default
@@ -499,13 +651,13 @@ const CommitsTab: React.FC<{
                         ))}
                     </ul>
 
-                    {/* küçük progress görüntüsü */}
+                    {/* küçük language progress */}
                     <div className="mt-4 space-y-2">
                         {['Java', 'C++', 'Python', 'JavaScript', 'Other'].map((name) => {
                             const l = LANGUAGES.find((x) => x.name === name)!;
                             return (
                                 <div key={name}>
-                                    <div className="mb-1 flex items-center justify_between text-xs text-slate-600">
+                                    <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
                                         <span className="inline-flex items-center gap-2">
                                             <span
                                                 className="h-2.5 w-2.5 rounded-full"
@@ -538,10 +690,17 @@ const CommitsTab: React.FC<{
     );
 };
 
-const BranchesTab: React.FC<{
+type BranchesTabProps = {
     branches: BranchItem[];
     defaultBranch: string;
-}> = ({ branches, defaultBranch }) => (
+    repoId?: string | number;
+};
+
+const BranchesTab: React.FC<BranchesTabProps> = ({
+    branches,
+    defaultBranch,
+    repoId,
+}) => (
     <div className="overflow-hidden rounded-2xl border border-slate-200">
         <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
@@ -557,7 +716,9 @@ const BranchesTab: React.FC<{
                         <td className="px-4 py-2">
                             <span className="inline-flex items-center gap-2">
                                 <GitBranchIcon className="h-4 w-4 text-slate-500" />
-                                <span className="font-medium text-slate-800">{b.name}</span>
+                                <span className="font-medium text-slate-800">
+                                    {b.name}
+                                </span>
                                 {b.name === defaultBranch && (
                                     <span className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">
                                         default
@@ -566,13 +727,28 @@ const BranchesTab: React.FC<{
                             </span>
                         </td>
                         <td className="px-4 py-2 text-slate-600">
-                            {b.lastCommitAt ?? '—'}
+                            {/* 👇 burada artık son commit mesajını gösteriyoruz */}
+                            {b.lastCommitMessage ?? '—'}
                         </td>
                         <td className="px-4 py-2 text-right">
-                            <button className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800">
-                                View commits
-                                <ChevronRight className="h-3.5 w-3.5" />
-                            </button>
+                            {repoId ? (
+                                <Link
+                                    to={`/repositories/${encodeURIComponent(
+                                        String(repoId),
+                                    )}/branches/${encodeURIComponent(
+                                        b.name,
+                                    )}/commits`}
+                                    state={{ branchName: b.name }}
+                                    className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800"
+                                >
+                                    View commits
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                </Link>
+                            ) : (
+                                <span className="text-xs text-slate-400">
+                                    View commits
+                                </span>
+                            )}
                         </td>
                     </tr>
                 ))}
@@ -617,7 +793,9 @@ const LanguagesTab: React.FC<{ languages: LanguageShare[] }> = ({
                             style={{ backgroundColor: l.color }}
                         />
                         <span>{l.name}</span>
-                        <span className="ml-auto text-slate-500">{l.percent}%</span>
+                        <span className="ml-auto text-slate-500">
+                            {l.percent}%
+                        </span>
                     </li>
                 ))}
             </ul>

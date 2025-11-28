@@ -8,6 +8,7 @@ import {
   RepositoriesPage,
   RepoDetailPage,
   ProfilePage,
+  BranchCommitsPage,
 } from '@/pages';
 import { ProtectedRoute } from '@/shared/components';
 import AppLayout from './AppLayout';
@@ -62,6 +63,18 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <ProfilePage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+      
+      {/* Branch Commits */}
+      <Route
+        path="/repositories/:repoId/branches/:branchName/commits"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <BranchCommitsPage />
             </AppLayout>
           </ProtectedRoute>
         }

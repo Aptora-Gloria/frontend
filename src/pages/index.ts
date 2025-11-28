@@ -15,3 +15,5 @@ export { default as RepoDetailPage } from './repositories/RepoDetailPage';
 
 // Profile (şimdilik placeholder olabilir)
 export { default as ProfilePage } from './profile/ProfilePage';
+
+export { default as BranchCommitsPage } from './commits/BranchCommitsPage';

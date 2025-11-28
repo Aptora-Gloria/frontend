@@ -16,7 +16,6 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  LineChart,
   Line,
   BarChart,
   Bar,
@@ -29,9 +28,13 @@ import {
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { getUserRepos, initUserRepos } from '@/shared/lib/repo-api';
 import { queryCommits, initCommits } from '@/shared/lib/commit-api';
+import { getBranchesByRepo, initBranchesByRepo } from '@/shared/lib/branch-api';
 
 import type { Repo } from '@/entities/repo';
 import type { Commit } from '@/entities/commit';
+import type { Branch } from '@/entities/branch';
+
+/* ---------- Types ---------- */
 
 type CommitsPerWeekPoint = {
   w: string;
@@ -40,7 +43,7 @@ type CommitsPerWeekPoint = {
 
 type RepoTop = {
   name: string;
-  commits: number;
+  stars: number;
 };
 
 type RecentCommit = {
@@ -61,23 +64,9 @@ type StatusRowProps = {
   value: string;
 };
 
-// --- Şimdilik statik metric verileri (backend metrics endpoint gelince değişir) ---
-const commitsPerWeek: CommitsPerWeekPoint[] = [
-  { w: 'W1', commits: 92 },
-  { w: 'W2', commits: 104 },
-  { w: 'W3', commits: 126 },
-  { w: 'W4', commits: 138 },
-  { w: 'W5', commits: 172 },
-  { w: 'W6', commits: 165 },
-];
+type WeekRange = 'all' | '30d' | '90d';
 
-const reposTop5: RepoTop[] = [
-  { name: 'Aptora-Gloria/backend', commits: 74 },
-  { name: 'Aptora-Gloria/frontend', commits: 51 },
-  { name: 'Aptora-Gloria/dia_fiyat_gor', commits: 29 },
-  { name: 'Aptora-Gloria/oguzhan_workspace', commits: 23 },
-  { name: 'Aptora-Gloria/etl-tools', commits: 18 },
-];
+/* ---------- Helpers ---------- */
 
 // Fallback dummy commits (API error durumunda)
 const DEFAULT_RECENT_COMMITS: RecentCommit[] = [
@@ -101,10 +90,98 @@ const mapCommitToRecentCommit = (
     : 'unknown time',
 });
 
+// RepositoriesPage’deki ile uyumlu org çıkarma
+function getOrgFromRepo(repo: Repo): string {
+  if ((repo as any).ownerLogin) return (repo as any).ownerLogin as string;
+  if (repo.fullName?.includes('/')) return repo.fullName.split('/')[0];
+  return 'no-org/user-repo';
+}
+
+function getOrgLabel(repo: Repo): string {
+  const org = getOrgFromRepo(repo);
+  if (org === 'no-org/user-repo') return 'User repos (no organization)';
+  return org;
+}
+
+// ISO hafta key’i
+function getWeekKey(d: Date): string {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((Number(date) - Number(yearStart)) / 86400000 + 1) / 7);
+  return `${date.getUTCFullYear()}-W${weekNum}`;
+}
+
+// commit listesinden haftalık activity datası
+function buildCommitsPerWeek(
+  commits: Commit[],
+  maxWeeks: number = 6,
+  range: WeekRange = '30d',
+): CommitsPerWeekPoint[] {
+  let filtered = commits;
+
+  if (range !== 'all') {
+    const days = range === '30d' ? 30 : 90;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    filtered = commits.filter((c) => {
+      if (!c.committedAt) return false;
+      const t = new Date(c.committedAt).getTime();
+      return !Number.isNaN(t) && t >= cutoff;
+    });
+  }
+
+  const buckets = new Map<string, number>();
+
+  filtered.forEach((c) => {
+    if (!c.committedAt) return;
+    const d = new Date(c.committedAt);
+    if (Number.isNaN(d.getTime())) return;
+    const key = getWeekKey(d);
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  });
+
+  const sorted = Array.from(buckets.entries()).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+
+  const last = sorted.slice(-maxWeeks);
+
+  return last.map(([_, count], idx) => ({
+    w: `W${idx + 1}`,
+    commits: count,
+  }));
+}
+
+// Repo → branch default name (RepoDetail ile aynı mantık)
+function resolveDefaultBranchName(
+  repo: Repo,
+  branches: Branch[],
+): string {
+  const fromRepo = repo.defaultBranch ?? undefined;
+  if (fromRepo) {
+    return fromRepo;
+  }
+
+  const defaultBranch = (branches as any[]).find((b) => b.isDefault) as
+    | (Branch & { isDefault?: boolean })
+    | undefined;
+
+  if (defaultBranch?.name) return defaultBranch.name;
+  if (branches[0]?.name) return branches[0].name;
+  return 'main';
+}
+
+/* ---------- Component ---------- */
+
+const ORG_ALL_REPOS_VALUE = '__org__all_repos__';
+
 export default function DashboardPage() {
   const { user } = useAuth();
 
   const [repos, setRepos] = useState<Repo[]>([]);
+  const [selectedOrg, setSelectedOrg] = useState<string>('all');
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
 
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -114,13 +191,70 @@ export default function DashboardPage() {
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
   const [isLoadingCommits, setIsLoadingCommits] = useState(false);
 
-  // Seçili repo objesi
+  const [weekRange, setWeekRange] = useState<WeekRange>('30d');
+
+  // Seçili repo objesi (sadece tek repo modunda dolu)
   const selectedRepo = useMemo(
     () => repos.find((r) => r.id === selectedRepoId) ?? null,
     [repos, selectedRepoId],
   );
 
-  // --- 1) Kullanıcının reposunu çek ---
+  const isOrgAggregated =
+    selectedOrg !== 'all' && selectedRepoId === ORG_ALL_REPOS_VALUE;
+
+  // Org bazlı gruplama
+  const groupedRepos = useMemo(
+    () => {
+      const map = new Map<string, Repo[]>();
+
+      repos.forEach((r) => {
+        const label = getOrgLabel(r);
+        if (!map.has(label)) map.set(label, []);
+        map.get(label)!.push(r);
+      });
+
+      return Array.from(map.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([label, list]) => [
+          label,
+          list.sort((x, y) =>
+            (x.fullName || x.name || '').localeCompare(y.fullName || y.name || ''),
+          ),
+        ] as [string, Repo[]]);
+    },
+    [repos],
+  );
+
+  const orgOptions = useMemo(
+    () => groupedRepos.map(([label]) => label),
+    [groupedRepos],
+  );
+  useEffect(() => {
+    if (selectedOrg === 'all') {
+      // All orgs modunda: eğer hiç repo seçili değilse veya "org-all" seçiliyse
+      // ve elimizde repo varsa, ilk repoyu seç
+      if ((!selectedRepoId || selectedRepoId === ORG_ALL_REPOS_VALUE) && repos[0]) {
+        setSelectedRepoId(repos[0].id);
+      }
+      return;
+    }
+
+    // Belirli bir organizasyon seçiliyse:
+    // Şu an seçili repo bu org'a ait mi?
+    const currentRepoInOrg =
+      selectedRepoId &&
+      selectedRepoId !== ORG_ALL_REPOS_VALUE &&
+      repos.some(
+        (r) => r.id === selectedRepoId && getOrgLabel(r) === selectedOrg,
+      );
+
+    // Eğer seçili repo bu org'a ait değilse, default olarak "All repos in org"
+    if (!currentRepoInOrg) {
+      setSelectedRepoId(ORG_ALL_REPOS_VALUE);
+    }
+  }, [selectedOrg, repos]); 
+  /* ---------- 1) Kullanıcının tüm repo’larını çek ---------- */
+
   useEffect(() => {
     const fetchRepos = async () => {
       if (!user) return;
@@ -128,8 +262,8 @@ export default function DashboardPage() {
       try {
         setIsLoadingRepos(true);
 
-        // 1) Önce DB’den oku
-        let data = await getUserRepos(); // <-- body yok: user + org tüm repos
+        // 1) Önce DB’den oku (user + org hepsi)
+        let data = await getUserRepos();
 
         // 2) Hiç repo yoksa bir kere init et, sonra tekrar oku
         if (data.length === 0) {
@@ -152,10 +286,32 @@ export default function DashboardPage() {
     fetchRepos();
   }, [user, selectedRepoId]);
 
-  // --- 2) Seçili repo için commitleri getir ---
+  /* ---------- 2) Seçili org / repo için branch + commitleri getir ---------- */
+
   useEffect(() => {
     const fetchCommits = async () => {
-      if (!selectedRepo) {
+      if (!repos.length) {
+        setCommits([]);
+        setRecentCommits(DEFAULT_RECENT_COMMITS);
+        return;
+      }
+
+      // Hangi repolar hedef?
+      let targetRepos: Repo[] = [];
+
+      if (isOrgAggregated) {
+        // Org aggregate: bu org’daki tüm repolar
+        targetRepos = repos.filter((r) => getOrgLabel(r) === selectedOrg);
+      } else if (selectedRepo) {
+        // Tek repo modu
+        targetRepos = [selectedRepo];
+      } else {
+        setCommits([]);
+        setRecentCommits(DEFAULT_RECENT_COMMITS);
+        return;
+      }
+
+      if (!targetRepos.length) {
         setCommits([]);
         setRecentCommits(DEFAULT_RECENT_COMMITS);
         return;
@@ -164,23 +320,73 @@ export default function DashboardPage() {
       try {
         setIsLoadingCommits(true);
 
-        const fullName = selectedRepo.fullName;
-        const branchName = selectedRepo.defaultBranch || 'main';
+        const allCommits: Commit[] = [];
+        const recentCandidates: { commit: Commit; repoFullName: string }[] = [];
 
-        // 1. DB'den oku
-        let repoCommits = await queryCommits(fullName, branchName);
+        // basit olsun diye sıralı fetch (ileride Promise.all ile optimize edilebilir)
+        for (const repo of targetRepos) {
+          const fullName = repo.fullName;
 
-        // 2. Boşsa init et ve tekrar oku
-        if (!repoCommits.length) {
-          await initCommits(fullName, branchName);
-          repoCommits = await queryCommits(fullName, branchName);
+          // 1) Branchler
+          let branchEntities: Branch[] = [];
+          try {
+            branchEntities = await getBranchesByRepo(fullName);
+          } catch (e) {
+            console.warn('⚠️ getBranchesByRepo failed, trying initBranchesByRepo', e);
+          }
+
+          if (!branchEntities.length) {
+            try {
+              branchEntities = await initBranchesByRepo(fullName);
+            } catch (e) {
+              console.error('❌ initBranchesByRepo failed:', e);
+            }
+          }
+
+          const branchName = resolveDefaultBranchName(repo, branchEntities);
+
+          // 2) Commits
+          let repoCommits: Commit[] = [];
+          try {
+            repoCommits = await queryCommits(fullName, branchName);
+          } catch (e) {
+            console.error('❌ queryCommits failed:', e);
+          }
+
+          if (!repoCommits.length) {
+            try {
+              await initCommits(fullName, branchName);
+              repoCommits = await queryCommits(fullName, branchName);
+            } catch (e) {
+              console.error('❌ initCommits or second queryCommits failed:', e);
+            }
+          }
+
+          allCommits.push(...repoCommits);
+          recentCandidates.push(
+            ...repoCommits.map((c) => ({ commit: c, repoFullName: fullName })),
+          );
         }
 
-        setCommits(repoCommits);
+        setCommits(allCommits);
 
-        const mapped = repoCommits
+        // recent commits: en yeni 20 commit, repo bilgisiyle
+        recentCandidates.sort((a, b) => {
+          const ta = a.commit.committedAt
+            ? new Date(a.commit.committedAt).getTime()
+            : 0;
+          const tb = b.commit.committedAt
+            ? new Date(b.commit.committedAt).getTime()
+            : 0;
+          return tb - ta;
+        });
+
+        const mapped = recentCandidates
           .slice(0, 20)
-          .map((c) => mapCommitToRecentCommit(c, fullName));
+          .map(({ commit, repoFullName }) =>
+            mapCommitToRecentCommit(commit, repoFullName),
+          );
+
         setRecentCommits(mapped.length ? mapped : DEFAULT_RECENT_COMMITS);
       } catch (error) {
         console.error('❌ Failed to load commits:', error);
@@ -192,9 +398,10 @@ export default function DashboardPage() {
     };
 
     fetchCommits();
-  }, [selectedRepo]);
+  }, [repos, selectedOrg, selectedRepo, isOrgAggregated]);
 
-  // --- 3) KPI’lar (şimdilik commit listesinden hesaplanıyor) ---
+  /* ---------- 3) KPI’lar ---------- */
+
   const totalCommits = commits.length;
 
   const contributorIds = new Set(
@@ -207,7 +414,11 @@ export default function DashboardPage() {
   const avgPerContrib =
     activeContrib > 0 ? Number((totalCommits / activeContrib).toFixed(1)) : 0;
 
-  const mostActiveRepo = selectedRepo?.fullName ?? '-';
+  const mostActiveRepo = isOrgAggregated
+    ? selectedOrg === 'all'
+      ? '-'
+      : `${selectedOrg} (all repos)`
+    : selectedRepo?.fullName ?? '-';
 
   const lastSync =
     commits.length
@@ -220,7 +431,40 @@ export default function DashboardPage() {
       ).toISOString()
       : '-';
 
-  // --- Render ---
+  /* ---------- 4) Chart dataları ---------- */
+
+  const commitsPerWeek = useMemo(
+    () => buildCommitsPerWeek(commits, 6, weekRange),
+    [commits, weekRange],
+  );
+
+  const reposTop5: RepoTop[] = useMemo(() => {
+    if (!repos.length) return [];
+    const sorted = [...repos].sort(
+      (a, b) => (b.stargazers ?? 0) - (a.stargazers ?? 0),
+    );
+    return sorted.slice(0, 5).map((r) => ({
+      name: r.fullName || r.name,
+      stars: r.stargazers ?? 0,
+    }));
+  }, [repos]);
+
+  // Org aggregate modunda org toplam star/issue vs
+  const orgStats = useMemo(() => {
+    if (!isOrgAggregated || selectedOrg === 'all') return null;
+    const orgRepos = repos.filter((r) => getOrgLabel(r) === selectedOrg);
+    if (!orgRepos.length) return null;
+
+    return {
+      stars: orgRepos.reduce((acc, r) => acc + (r.stargazers ?? 0), 0),
+      watchers: orgRepos.reduce((acc, r) => acc + (r.watchers ?? 0), 0),
+      forks: orgRepos.reduce((acc, r) => acc + (r.forks ?? 0), 0),
+      openIssues: orgRepos.reduce((acc, r) => acc + (r.openIssues ?? 0), 0),
+    };
+  }, [isOrgAggregated, selectedOrg, repos]);
+
+  /* ---------- Render ---------- */
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="">
@@ -230,17 +474,45 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3 text-sm text-slate-600">
               <span>Analytics</span>
 
+              {/* Org selector */}
+              <select
+                className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600"
+                value={selectedOrg}
+                onChange={(e) => setSelectedOrg(e.target.value)}
+              >
+                <option value="all">All organizations</option>
+                {orgOptions.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+
               {/* Repo selector */}
               <select
                 className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600"
                 value={selectedRepoId ?? ''}
                 onChange={(e) => setSelectedRepoId(e.target.value)}
               >
-                {repos.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.fullName}
+                {selectedOrg !== 'all' && (
+                  <option value={ORG_ALL_REPOS_VALUE}>
+                    All repos in {selectedOrg}
                   </option>
-                ))}
+                )}
+
+                {groupedRepos
+                  .filter(
+                    ([label]) => selectedOrg === 'all' || label === selectedOrg,
+                  )
+                  .map(([label, list]) => (
+                    <optgroup key={label} label={label}>
+                      {list.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.fullName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
               </select>
             </div>
 
@@ -266,7 +538,11 @@ export default function DashboardPage() {
           {/* KPI row */}
           <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
-              title="Total Commits (selected repo)"
+              title={
+                isOrgAggregated
+                  ? 'Total Commits (organization)'
+                  : 'Total Commits (selected repo)'
+              }
               value={totalCommits.toString()}
               icon={<Activity className="h-4 w-4 text-sky-500" />}
             />
@@ -281,7 +557,7 @@ export default function DashboardPage() {
               icon={<GitBranch className="h-4 w-4 text-violet-500" />}
             />
             <KpiCard
-              title="Most Active Repository"
+              title={isOrgAggregated ? 'Scope' : 'Most Active Repository'}
               value={mostActiveRepo}
               icon={<Flame className="h-4 w-4 text-amber-500" />}
             />
@@ -289,11 +565,39 @@ export default function DashboardPage() {
 
           {/* Charts row */}
           <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {/* Trend (statik) */}
+            {/* Trend */}
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
-              <h3 className="mb-3 text-sm font-medium text-slate-800">
-                Commits per Week (Organization)
-              </h3>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-slate-800">
+                  {isOrgAggregated
+                    ? 'Commits per Week (organization)'
+                    : 'Commits per Week (selected repo)'}
+                </h3>
+
+                {/* Range buttons */}
+                <div className="flex items-center gap-1 text-xs">
+                  {(['30d', '90d', 'all'] as WeekRange[]).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setWeekRange(r)}
+                      className={
+                        'rounded-full px-2 py-1 ' +
+                        (weekRange === r
+                          ? 'bg-slate-900/5 text-slate-900 ring-1 ring-slate-300'
+                          : 'text-slate-500 hover:bg-slate-50')
+                      }
+                    >
+                      {r === '30d'
+                        ? 'Last 30 days'
+                        : r === '90d'
+                          ? 'Last 90 days'
+                          : 'All time'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={commitsPerWeek}>
@@ -308,6 +612,7 @@ export default function DashboardPage() {
                       tickLine={false}
                       axisLine={false}
                       stroke="#94A3B8"
+                      allowDecimals={false}
                     />
                     <Tooltip />
                     <Area
@@ -331,7 +636,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Top 5 repos (statik) */}
+            {/* Top 5 repos by stars */}
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-medium text-slate-800">
                 Top 5 Repositories by Stars
@@ -359,7 +664,7 @@ export default function DashboardPage() {
                       width={200}
                     />
                     <Tooltip />
-                    <Bar dataKey="commits" radius={[6, 6, 6, 6]} fill="#86efac" />
+                    <Bar dataKey="stars" radius={[6, 6, 6, 6]} fill="#86efac" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -369,7 +674,7 @@ export default function DashboardPage() {
                     <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-300" />
                     <span className="truncate">{r.name}</span>
                     <span className="ml-auto font-medium text-slate-700">
-                      {r.commits}
+                      {r.stars}
                     </span>
                   </li>
                 ))}
@@ -377,69 +682,101 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* Bottom: recent feed + repo details */}
+          {/* Bottom: recent feed + repo/org details */}
           <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
               <h3 className="mb-3 text-sm font-medium text-slate-800">
-                Recent Commits
-                {selectedRepo ? ` (${selectedRepo.fullName})` : ''}
+                {isOrgAggregated
+                  ? `Recent Commits (organization: ${selectedOrg})`
+                  : `Recent Commits${selectedRepo ? ` (${selectedRepo.fullName})` : ''
+                  }`}
               </h3>
-              <ul className="divide-y divide-slate-200">
-                {recentCommits.map((c, i) => (
-                  <li
-                    key={`${c.repo}-${i}`}
-                    className="flex items-center gap-3 py-3"
-                  >
-                    <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200" />
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-slate-800">
-                        {c.msg}
+
+              {/* scrollable list */}
+              <div className="max-h-80 overflow-y-auto pr-1">
+                <ul className="divide-y divide-slate-200">
+                  {recentCommits.map((c, i) => (
+                    <li
+                      key={`${c.repo}-${i}`}
+                      className="flex items-center gap-3 py-3"
+                    >
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200" />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-800">
+                          {c.msg}
+                        </div>
+                        <div className="truncate text-xs text-slate-500">
+                          {c.author} • {c.repo}
+                        </div>
                       </div>
-                      <div className="truncate text-xs text-slate-500">
-                        {c.author} • {c.repo}
+                      <div className="ml-auto shrink-0 text-xs text-slate-500">
+                        {c.time}
                       </div>
-                    </div>
-                    <div className="ml-auto shrink-0 text-xs text-slate-500">
-                      {c.time}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-medium text-slate-800">
-                Repo Details
+                {isOrgAggregated ? 'Organization Details' : 'Repo Details'}
               </h3>
               <div className="space-y-2 text-sm">
                 <StatusRow
-                  label="Name"
-                  value={selectedRepo?.fullName ?? '—'}
+                  label={isOrgAggregated ? 'Organization' : 'Name'}
+                  value={
+                    isOrgAggregated
+                      ? selectedOrg
+                      : selectedRepo?.fullName ?? '—'
+                  }
                 />
                 <StatusRow
                   label="Language"
-                  value={selectedRepo?.language ?? '—'}
+                  value={
+                    isOrgAggregated
+                      ? '—'
+                      : selectedRepo?.language ?? '—'
+                  }
                 />
                 <StatusRow
                   label="Stars"
-                  value={String(selectedRepo?.stargazers ?? 0)}
+                  value={
+                    isOrgAggregated
+                      ? String(orgStats?.stars ?? 0)
+                      : String(selectedRepo?.stargazers ?? 0)
+                  }
                 />
                 <StatusRow
                   label="Watchers"
-                  value={String(selectedRepo?.watchers ?? 0)}
+                  value={
+                    isOrgAggregated
+                      ? String(orgStats?.watchers ?? 0)
+                      : String(selectedRepo?.watchers ?? 0)
+                  }
                 />
                 <StatusRow
                   label="Forks"
-                  value={String(selectedRepo?.forks ?? 0)}
+                  value={
+                    isOrgAggregated
+                      ? String(orgStats?.forks ?? 0)
+                      : String(selectedRepo?.forks ?? 0)
+                  }
                 />
                 <StatusRow
                   label="Open Issues"
-                  value={String(selectedRepo?.openIssues ?? 0)}
+                  value={
+                    isOrgAggregated
+                      ? String(orgStats?.openIssues ?? 0)
+                      : String(selectedRepo?.openIssues ?? 0)
+                  }
                 />
-                <StatusRow
-                  label="Default Branch"
-                  value={selectedRepo?.defaultBranch ?? '—'}
-                />
+                {!isOrgAggregated && (
+                  <StatusRow
+                    label="Default Branch"
+                    value={selectedRepo?.defaultBranch ?? '—'}
+                  />
+                )}
               </div>
             </div>
           </section>
@@ -452,6 +789,8 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+/* ---------- Small components ---------- */
 
 function KpiCard({ title, value, icon }: KpiCardProps) {
   return (
