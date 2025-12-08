@@ -67,7 +67,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      
+
       {/* Branch Commits */}
       <Route
         path="/repositories/:repoId/branches/:branchName/commits"

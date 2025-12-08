@@ -20,7 +20,7 @@ export interface Commit {
 
 export const mapCommitDtoToEntity = (dto: CommitDto): Commit => ({
   sha: dto.sha,
-  message: dto.commit.message,
+  message: dto.commit?.message ?? 'No commit message',
 
   authorName: dto.commit.author?.name ?? null,
   authorLogin: dto.author?.login ?? null,
@@ -31,5 +31,5 @@ export const mapCommitDtoToEntity = (dto: CommitDto): Commit => ({
   authoredAt: dto.commit.author?.date ?? null,
   committedAt: dto.commit.committer?.date ?? null,
 
-  htmlUrl: dto.html_url ?? null,   // <- null fallback
+  htmlUrl: dto.html_url ?? null,
 });
