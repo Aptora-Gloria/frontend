@@ -13,11 +13,10 @@ export const AuthCallbackPage = () => {
   const { login: setAuthToken, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const hasHandledAuth = useRef(false); // handleAuth'ın sadece bir kez çalışmasını sağla
-  const hasNavigated = useRef(false); // Navigate'in sadece bir kez çalışmasını sağla
+  const hasHandledAuth = useRef(false);
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
-    // Eğer zaten handle edildiyse tekrar çalışma
     if (hasHandledAuth.current) {
       return;
     }
