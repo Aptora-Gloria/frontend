@@ -1,22 +1,99 @@
-import { RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
-import { AuthProvider } from '@/shared/contexts/AuthContext';
-import { DashboardPage } from '@/pages/dashboard';
-import { AuthCallbackPage } from '@/pages/auth/callback';
+import {
+  DashboardPage,
+  LoginPage,
+  AuthCallbackPage,
+  RepositoriesPage,
+  RepoDetailPage,
+  ProfilePage,
+  BranchCommitsPage,
+  OrganizationsPage,
+} from '@/pages';
+import { ProtectedRoute } from '@/shared/components';
+import AppLayout from './AppLayout';
 
-const router = createBrowserRouter([
-  { path: '/', element: <DashboardPage /> },
-  { path: '/auth/callback', element: <AuthCallbackPage /> },
-]);
-
-export function App() {
+export default function App() {
   return (
-    <AuthProvider>
-      <div className="min-h-screen bg-gray-50 text-gray-900">
-        <RouterProvider router={router} />
-      </div>
-    </AuthProvider>
+    <Routes>
+      {/* Login */}
+      <Route path="/" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+      {/* Dashboard */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <DashboardPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Repositories list */}
+      <Route
+        path="/repositories"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <RepositoriesPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Repo detail */}
+      <Route
+        path="/repositories/:repoId"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <RepoDetailPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Branch Commits (Timeline) */}
+      <Route
+        path="/repositories/:repoId/branches/:branchName/commits"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <BranchCommitsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Organizations (YENİ EKLENDİ) */}
+      <Route
+        path="/organizations"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <OrganizationsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Profile */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <ProfilePage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* unknown route -> dashboard */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
   );
 }
-
-export default App;

@@ -3,24 +3,29 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// ESM ortamında __dirname oluştur
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+
+  // ---- ✅ ALIAS TAM DOĞRU ŞEKİLDE AYARLANDI ----
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(__dirname, 'src'),
     },
   },
+
+  // ---- 🔥 Backend proxy ayarları ----
   server: {
     proxy: {
+      // API için
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
       },
-      // Sadece backend auth endpoint'lerine proxy yap, frontend route'larına dokunma
+      // Auth için
       '/auth/login': {
         target: 'http://localhost:8080',
         changeOrigin: true,
