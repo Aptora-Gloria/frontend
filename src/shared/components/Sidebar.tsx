@@ -1,3 +1,4 @@
+// src/shared/components/Sidebar.tsx
 import { NavLink, useNavigate } from "react-router-dom";
 import {
     LayoutGrid,
@@ -7,7 +8,6 @@ import {
     Settings,
     LogOut,
 } from "lucide-react";
-// Context yolunu kendi projene göre kontrol et, hata verirse düzelt
 import { useAuth } from "@/shared/contexts/AuthContext";
 
 const navItems = [
@@ -17,7 +17,6 @@ const navItems = [
     { key: "Profile", icon: User, to: "/profile" },
 ];
 
-// 1. Sidebar'a dışarıdan gelecek fonksiyonu tanımlıyoruz
 interface SidebarProps {
     onOpenSettings?: () => void;
 }
@@ -29,7 +28,9 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
     /** Safe logout */
     const handleLogout = () => {
         logout();
-        setTimeout(() => navigate("/login"), 0);
+        // DÜZELTME: "/login" yerine "/" rotasına yönlendiriyoruz
+        // replace: true kullanarak kullanıcının geri tuşuyla tekrar içeri girmesini engelliyoruz
+        setTimeout(() => navigate("/", { replace: true }), 0);
     };
 
     return (
@@ -76,8 +77,7 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
                     </NavLink>
                 ))}
 
-                {/* --- AYARLAR BUTONU (EKLENDİ) --- */}
-                {/* Diğer linklerle aynı stilde ama NavLink değil Button */}
+                {/* --- AYARLAR BUTONU --- */}
                 <button
                     onClick={onOpenSettings}
                     className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"

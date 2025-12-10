@@ -1,4 +1,4 @@
-import type { BranchDto } from '@shared/lib/dto/branch-dto';
+import type { BranchDto } from '@/shared/lib/dto/branch-dto';
 
 export interface Branch {
     name: string;
