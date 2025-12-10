@@ -1,550 +1,638 @@
 // src/pages/repositories/RepoDetailPage.tsx
-import { Link, useLocation, useParams } from 'react-router-dom';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
     ExternalLink,
     RefreshCw,
-    GitBranch as GitBranchIcon,
+    GitBranch,
     Star,
     GitFork,
     Eye,
     AlertCircle,
-    Info,
-    ChevronRight,
+    Database,
+    ArrowLeft,
+    GitCommitHorizontal,
     Search,
+    Copy,
+    Check,
+    FileText,
+    ShieldCheck,
+    Clock,
+    Activity,
+    Users,
+    Code2,
+    Lock,
+    Unlock,
+    Terminal,
+    Zap,
+    History
 } from 'lucide-react';
 
 import type { Repo } from '@/entities/repo';
-import type { Commit } from '@/entities/commit';
-import type { Branch } from '@/entities/branch';
-
 import { getUserRepos } from '@/shared/lib/repo-api';
 import { getBranchesByRepo, initBranchesByRepo } from '@/shared/lib/branch-api';
 import { initCommits, queryCommits } from '@/shared/lib/commit-api';
-import { Avatar, Chip, ChipDot, PillButton, TabPill } from '@/shared/ui';
+import { Avatar } from '@/shared/ui';
 
 /* ---------- Language Color Map ---------- */
 const LANG_COLOR: Record<string, string> = {
-    JavaScript: '#FCD34D',
-    TypeScript: '#60A5FA',
-    Python: '#34D399',
-    'C++': '#A78BFA',
-    Java: '#F97316',
-    Markdown: '#94A3B8',
-    Default: '#CBD5E1',
+    JavaScript: '#F7DF1E',
+    TypeScript: '#3178C6',
+    Python: '#3776AB',
+    'C++': '#00599C',
+    Java: '#007396',
+    Markdown: '#000000',
+    Vue: '#4FC08D',
+    React: '#61DAFB',
+    Go: '#00ADD8',
+    Rust: '#DEA584',
+    Default: '#94A3B8',
 };
 
-/* ---------- Map entity to UI types ---------- */
+/* ---------- Helpers & Mappers ---------- */
 
-function mapBranchToItem(b: Branch, defaultBranch?: string) {
-    const anyB = b as any;
-
-    const lastCommitAt =
-        anyB.lastCommitAt ??
-        anyB.latestCommitAt ??
-        (anyB.commit?.committedAt
-            ? new Date(anyB.commit.committedAt).toLocaleString()
-            : undefined);
-
+function mapBranchToItem(b: any, defaultBranch?: string) {
+    const rawDate = b.lastCommitAt ?? b.latestCommitAt ?? b.commit?.committedAt;
     return {
-        id: String(anyB.id ?? anyB.name),
-        name: anyB.name ?? '',
-        isDefault: defaultBranch ? anyB.name === defaultBranch : undefined,
-        lastCommitAt,
-        lastCommitMessage:
-            anyB.lastCommitMessage ??
-            anyB.latestCommitMessage ??
-            anyB.commit?.message ??
-            undefined,
+        id: String(b.id ?? b.name),
+        name: b.name ?? '',
+        isDefault: defaultBranch ? b.name === defaultBranch : false,
+        lastCommitAt: rawDate ? new Date(rawDate).toLocaleString() : '—',
+        lastCommitMessage: b.lastCommitMessage ?? b.latestCommitMessage ?? b.commit?.message ?? '—',
     };
 }
 
-function mapCommitToItem(c: Commit, branchName: string) {
-    const anyC = c as any;
+function mapCommitToItem(c: any, branchName: string) {
+    const message = c.message || c.commit?.message || 'No commit message';
+    const authorName = c.authorName || c.commit?.author?.name || c.author?.login || 'Unknown';
+    const authorLogin = c.authorLogin || c.author?.login || c.committer?.login || authorName;
+    const dateStr = c.committedAt || c.date || c.commit?.author?.date || c.commit?.committer?.date;
+    const dateObj = dateStr ? new Date(dateStr) : new Date();
+    const url = c.htmlUrl || c.html_url || c.url || '#';
 
     return {
-        sha: anyC.sha ?? '',
-        message: anyC.message ?? '',
-        author: anyC.authorLogin || anyC.authorName || 'unknown',
-        date: anyC.committedAt ? new Date(anyC.committedAt).toLocaleString() : '',
-        url: anyC.htmlUrl || anyC.url || '#',
+        sha: c.sha ?? '',
+        message,
+        authorName,
+        authorLogin,
+        date: dateObj.toLocaleString(),
+        rawDate: dateObj,
+        url,
         branch: branchName,
     };
 }
 
-/* ---------- Page ---------- */
+function formatSize(kb: number): string {
+    if (!kb) return '0 KB';
+    if (kb >= 1024) return (kb / 1024).toFixed(1) + ' MB';
+    return kb + ' KB';
+}
+
+/* ---------- UI Components ---------- */
+
+const CopyButton = ({ text, className }: { text: string, className?: string }) => {
+    const [copied, setCopied] = useState(false);
+    const handleCopy = () => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+        <button onClick={handleCopy} className={`transition-colors ${className || 'text-slate-400 hover:text-slate-600'}`} title="Copy">
+            {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+    );
+};
+
+const TabButton = ({ active, label, count, onClick }: { active: boolean, label: string, count?: number, onClick: () => void }) => (
+    <button
+        onClick={onClick}
+        className={`relative flex items-center gap-2 px-1 py-4 text-sm font-medium transition-colors ${active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
+            }`}
+    >
+        {label}
+        {count !== undefined && (
+            <span className={`rounded-full px-2 py-0.5 text-[10px] ${active ? 'bg-slate-100 text-slate-900' : 'bg-slate-50 text-slate-500'}`}>
+                {count}
+            </span>
+        )}
+        {active && (
+            <motion.div
+                layoutId="activeTab"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
+            />
+        )}
+    </button>
+);
+
+const StatBadge = ({ icon: Icon, label, value }: { icon: any, label?: string, value: string | number }) => (
+    <div className="flex items-center gap-1.5 text-sm text-slate-600" title={label}>
+        <Icon className="h-4 w-4 text-slate-400" />
+        <span className="font-medium text-slate-900">{value}</span>
+        {label && <span className="text-slate-500 hidden sm:inline">{label}</span>}
+    </div>
+);
+
+const CommitTimelineItem = ({ commit }: { commit: any }) => (
+    <div className="group relative flex gap-4 pb-8 last:pb-0">
+        <div className="absolute left-[19px] top-8 bottom-0 w-px bg-slate-200 group-last:hidden" />
+        <div className="relative z-10 mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+            <Avatar name={commit.authorLogin} className="h-8 w-8" />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col pt-1">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 leading-tight">
+                        {commit.message}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span className="font-medium text-slate-700">{commit.authorName}</span>
+                        <span>committed on {commit.date}</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 border border-slate-200">
+                            {commit.branch}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start rounded-lg border border-slate-100 bg-slate-50 px-2 py-1">
+                    <GitCommitHorizontal className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="font-mono text-xs text-slate-600">{commit.sha.slice(0, 7)}</span>
+                    <div className="h-3 w-px bg-slate-200" />
+                    <CopyButton text={commit.sha} />
+                    <a href={commit.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-blue-600 transition-colors">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
+/* ---------- Main Page Component ---------- */
 
 export default function RepoDetailPage() {
     const { repoId } = useParams<{ repoId: string }>();
     const location = useLocation();
+    const navigate = useNavigate();
     const state = location.state as { repo?: Repo } | null;
 
     const [repo, setRepo] = useState<Repo | null>(state?.repo ?? null);
-
     const [branches, setBranches] = useState<any[]>([]);
     const [commits, setCommits] = useState<any[]>([]);
 
     const [isLoadingRepo, setIsLoadingRepo] = useState(false);
-    const [repoError, setRepoError] = useState<string | null>(null);
-
     const [isLoadingBranches, setIsLoadingBranches] = useState(false);
-    const [branchesError, setBranchesError] = useState<string | null>(null);
-
     const [isLoadingCommits, setIsLoadingCommits] = useState(false);
-    const [commitsError, setCommitsError] = useState<string | null>(null);
 
-    const [activeTab, setActiveTab] =
-        useState<'overview' | 'commits' | 'branches'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'branches'>('overview');
     const [branchFilter, setBranchFilter] = useState<string>('all');
 
-    /* ---------- 1) Repo yükle ---------- */
+    // 1. Repo Load
     useEffect(() => {
         if (repo || !repoId) return;
-
         const fetchRepo = async () => {
             try {
                 setIsLoadingRepo(true);
                 const all = await getUserRepos();
                 const found = all.find((r) => String(r.id) === String(repoId)) ?? null;
-
-                if (!found) setRepoError('Repository not found.');
                 setRepo(found);
             } catch (e) {
-                setRepoError('Repository could not be loaded.');
+                console.error(e);
             } finally {
                 setIsLoadingRepo(false);
             }
         };
-
         fetchRepo();
     }, [repo, repoId]);
 
-    /* ---------- 2) Branch yükle ---------- */
+    // 2. Branches Load
     useEffect(() => {
         if (!repo?.fullName) return;
-
         const loadBranches = async () => {
             try {
                 setIsLoadingBranches(true);
-
                 let list = await getBranchesByRepo(repo.fullName);
                 if (!list.length) {
                     await initBranchesByRepo(repo.fullName);
                     list = await getBranchesByRepo(repo.fullName);
                 }
-
                 setBranches(list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined)));
             } catch (e) {
-                setBranchesError('Branches could not be loaded.');
                 setBranches([]);
             } finally {
                 setIsLoadingBranches(false);
             }
         };
-
         loadBranches();
     }, [repo]);
 
-    /* ---------- 3) Commit yükle ---------- */
+    // 3. Commits Load
     useEffect(() => {
         if (!repo?.fullName || branches.length === 0) return;
-
         const fetchCommits = async () => {
             try {
                 setIsLoadingCommits(true);
-
-                const branchNames =
-                    branchFilter === 'all'
-                        ? branches.map((b) => b.name)
-                        : [branchFilter];
-
-                const all: any[] = [];
+                const branchNames = branchFilter === 'all' ? branches.map((b) => b.name) : [branchFilter];
+                const allRawCommits: any[] = [];
 
                 for (const br of branchNames) {
                     await initCommits(repo.fullName, br);
                     const data = await queryCommits(repo.fullName, br);
-                    all.push(...data.map((c) => mapCommitToItem(c, br)));
+                    allRawCommits.push(...data.map((c: any) => mapCommitToItem(c, br)));
                 }
 
-                all.sort((a, b) => (a.date < b.date ? 1 : -1));
-                setCommits(all);
+                const uniqueMap = new Map();
+                allRawCommits.forEach(item => {
+                    if (!uniqueMap.has(item.sha)) {
+                        uniqueMap.set(item.sha, item);
+                    }
+                });
+                const uniqueCommits = Array.from(uniqueMap.values());
+                uniqueCommits.sort((a: any, b: any) => b.rawDate.getTime() - a.rawDate.getTime());
+
+                setCommits(uniqueCommits);
             } catch (e) {
-                setCommitsError('Commits could not be loaded.');
+                console.error("Commits fetch error:", e);
                 setCommits([]);
             } finally {
                 setIsLoadingCommits(false);
             }
         };
-
         fetchCommits();
     }, [repo, branches, branchFilter]);
 
-    /* ---------- Derived ---------- */
-    const lastUpdatedLabel = useMemo(() => {
-        if (!repo) return '—';
-        const src = repo.pushedAt || repo.updatedAt || repo.createdAt;
-        if (!src) return '—';
-        return new Date(src).toLocaleString();
-    }, [repo]);
+    // --- DÜZELTİLDİ: DOĞRU URL'E GİTME ---
+    const handleGoToBranch = (branchName: string) => {
+        if (!repo) return;
+        // "/commits" EKİ EKLENDİ!
+        navigate(`/repositories/${repo.id}/branches/${encodeURIComponent(branchName)}/commits`, {
+            state: { repo, branchName }
+        });
+    };
 
     const repoLanguage = repo?.language ?? 'Unknown';
     const languageColor = LANG_COLOR[repoLanguage] ?? LANG_COLOR.Default;
+    const isPrivate = (repo as any)?.visibility === 'private' || (repo as any)?.private;
 
-    /* ---------- Loading states ---------- */
-    if (isLoadingRepo && !repo) {
-        return (
-            <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
-                Loading repository…
-            </div>
-        );
-    }
-
-    if (!repo) {
-        return (
-            <div className="flex min-h-screen items-center justify-center text-sm text-red-500">
-                {repoError ?? 'Repository not found.'}
-            </div>
-        );
-    }
-
-    /* ---------- Render UI ---------- */
+    if (isLoadingRepo && !repo) return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Loading...</div>;
+    if (!repo) return <div className="flex min-h-screen items-center justify-center text-sm text-red-500">Not found.</div>;
 
     return (
-        <>
+        <div className="min-h-screen bg-[#FAFBFC]">
             {/* HEADER */}
-            <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/70 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
-                    <div className="flex flex-col text-sm">
-                        <span className="text-xs text-slate-500">Repositories</span>
-                        <span className="font-medium text-slate-800">{repo.fullName}</span>
-                    </div>
-                    <div className="text-xs text-slate-500">Last updated: {lastUpdatedLabel}</div>
-                </div>
-            </header>
+            <div className="border-b border-slate-200 bg-white">
+                <div className="mx-auto max-w-7xl px-6 py-6">
+                    <button
+                        onClick={() => navigate('/repositories')}
+                        className="mb-4 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
+                    >
+                        <ArrowLeft className="h-3 w-3" />
+                        Back to Repositories
+                    </button>
 
-            <main className="mx-auto max-w-7xl px-6 py-8">
-                <div className="space-y-6">
-                    {/* TOP CARD */}
-                    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/60">
-                        <div className="flex flex-col gap-6 md:flex-row md:justify-between">
-                            <div className="min-w-0">
-                                <h1 className="truncate text-2xl font-semibold text-slate-900">
-                                    {repo.fullName}
-                                </h1>
-                                {repo.description && (
-                                    <p className="mt-1 text-slate-600">{repo.description}</p>
-                                )}
-
-                                <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                                    <ChipDot label={repoLanguage} dotColor={languageColor} />
-
-                                    <Chip icon={<Star className="h-4 w-4" />} label={`${repo.stargazers ?? 0} stars`} />
-                                    <Chip icon={<GitFork className="h-4 w-4" />} label={`${repo.forks ?? 0} forks`} />
-                                    <Chip icon={<Eye className="h-4 w-4" />} label={`${repo.watchers ?? 0} watchers`} />
-                                    <Chip icon={<AlertCircle className="h-4 w-4" />} label={`${repo.openIssues ?? 0} issues`} />
-                                    <Chip icon={<Info className="h-4 w-4" />} label={`${Math.round((repo.size ?? 0) / 1024)} MB`} />
-                                    <Chip icon={<GitBranchIcon className="h-4 w-4" />} label={`default: ${repo.defaultBranch ?? '-'}`} />
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-50 border border-slate-100 text-slate-600">
+                                    {isPrivate ? <Lock className="h-6 w-6" /> : <Unlock className="h-6 w-6" />}
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-bold text-slate-900">{repo.fullName}</h1>
+                                    <div className="mt-1 flex items-center gap-4 text-sm text-slate-500">
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: languageColor }} />
+                                            {repoLanguage}
+                                        </span>
+                                        <span className="text-slate-300">•</span>
+                                        <span className="flex items-center gap-1.5">
+                                            <Database className="h-3.5 w-3.5" />
+                                            {formatSize(repo.size ?? 0)}
+                                        </span>
+                                        <span className="text-slate-300">•</span>
+                                        <span className="text-xs">Updated {new Date(repo.updatedAt ?? '').toLocaleDateString()}</span>
+                                    </div>
                                 </div>
                             </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex shrink-0 flex-wrap items-center gap-2">
-                                <PillButton
-                                    as="a"
-                                    href={repo.htmlUrl ?? '#'}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                >
-                                    <ExternalLink className="h-4 w-4" />
-                                    View on GitHub
-                                </PillButton>
-
-                                <PillButton
-                                    onClick={async () => {
-                                        if (!repo.fullName) return;
-                                        await initBranchesByRepo(repo.fullName);
-                                        await getBranchesByRepo(repo.fullName);
-                                    }}
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Sync Branches
-                                </PillButton>
-
-                                <PillButton
-                                    onClick={async () => {
-                                        if (!repo.fullName || branches.length === 0) return;
-
-                                        const targetBranches =
-                                            branchFilter === 'all'
-                                                ? branches.map((b) => b.name)
-                                                : [branchFilter];
-
-                                        for (const br of targetBranches) {
-                                            await initCommits(repo.fullName, br);
-                                            await queryCommits(repo.fullName, br);
-                                        }
-                                    }}
-                                >
-                                    <RefreshCw className="h-4 w-4" />
-                                    Sync Commits
-                                </PillButton>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* TABS */}
-                    <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-                        <div className="flex items-center gap-2 p-3">
-                            <TabPill
-                                active={activeTab === 'overview'}
-                                onClick={() => setActiveTab('overview')}
-                                label="Overview"
-                            />
-                            <TabPill
-                                active={activeTab === 'commits'}
-                                onClick={() => setActiveTab('commits')}
-                                label="Commits"
-                            />
-                            <TabPill
-                                active={activeTab === 'branches'}
-                                onClick={() => setActiveTab('branches')}
-                                label="Branches"
-                            />
-
-                            <div className="ml-auto pr-1 text-xs text-slate-500">
-                                Last Updated: {lastUpdatedLabel}
-                            </div>
                         </div>
 
-                        <div className="border-t border-slate-200 p-4">
-                            {/* OVERVIEW */}
-                            {activeTab === 'overview' && (
-                                <OverviewTab
-                                    lastUpdated={lastUpdatedLabel}
-                                    branchesCount={branches.length}
-                                    commitsCount={commits.length}
-                                    defaultBranch={repo.defaultBranch ?? '-'}
-                                />
-                            )}
-
-                            {/* COMMITS */}
-                            {activeTab === 'commits' && (
-                                <CommitsTab
-                                    commits={commits}
-                                    branches={branches}
-                                    branchFilter={branchFilter}
-                                    setBranchFilter={setBranchFilter}
-                                    isLoading={isLoadingCommits}
-                                    error={commitsError}
-                                />
-                            )}
-
-                            {/* BRANCHES */}
-                            {activeTab === 'branches' && (
-                                <BranchesTab
-                                    branches={branches}
-                                    defaultBranch={repo.defaultBranch ?? 'main'}
-                                    repoId={repo.id}
-                                />
-                            )}
+                        <div className="flex gap-3">
+                            <a
+                                href={repo.htmlUrl ?? '#'}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
+                            >
+                                <ExternalLink className="h-4 w-4" />
+                                GitHub
+                            </a>
+                            <button
+                                onClick={async () => {
+                                    if (!repo.fullName) return;
+                                    await initBranchesByRepo(repo.fullName);
+                                    await getBranchesByRepo(repo.fullName);
+                                }}
+                                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-colors active:scale-95"
+                            >
+                                <RefreshCw className="h-4 w-4" />
+                                Sync Data
+                            </button>
                         </div>
-                    </section>
+                    </div>
+
+                    <div className="mt-8 flex flex-wrap gap-x-8 gap-y-4 border-t border-slate-100 pt-6">
+                        <StatBadge icon={Star} label="stars" value={repo.stargazers ?? 0} />
+                        <StatBadge icon={GitFork} label="forks" value={repo.forks ?? 0} />
+                        <StatBadge icon={Eye} label="watchers" value={repo.watchers ?? 0} />
+                        <StatBadge icon={AlertCircle} label="issues" value={repo.openIssues ?? 0} />
+                        <StatBadge icon={GitBranch} label="default" value={repo.defaultBranch ?? 'main'} />
+                    </div>
+
+                    <div className="mt-6 flex gap-6 border-b border-slate-200">
+                        <TabButton active={activeTab === 'overview'} label="Overview" onClick={() => setActiveTab('overview')} />
+                        <TabButton active={activeTab === 'commits'} label="Commits" count={commits.length > 0 ? commits.length : undefined} onClick={() => setActiveTab('commits')} />
+                        <TabButton active={activeTab === 'branches'} label="Branches" count={branches.length > 0 ? branches.length : undefined} onClick={() => setActiveTab('branches')} />
+                    </div>
                 </div>
-            </main>
+            </div>
 
-            <footer className="mt-10 border-t border-slate-200 bg-white/70 py-3 text-center text-xs text-slate-500">
-                footer placeholder
-            </footer>
-        </>
+            {/* --- MAIN CONTENT --- */}
+            <main className="mx-auto max-w-7xl px-6 py-8">
+                {activeTab === 'overview' && <OverviewTabContent repo={repo} commits={commits} languageColor={languageColor} repoLanguage={repoLanguage} />}
+
+                {/* Commits Tab (Mini View) */}
+                {activeTab === 'commits' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                            <div className="relative max-w-sm flex-1">
+                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                <input type="text" placeholder="Search commits..." className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-slate-500">Filter Branch:</span>
+                                <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-blue-500">
+                                    <option value="all">All Branches</option>
+                                    {branches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                            {isLoadingCommits ? <div className="text-center py-10 text-slate-500">Loading commits timeline...</div> : commits.length === 0 ? <div className="text-center py-10 text-slate-500">No commits found. Click "Sync Data" to fetch or select a different branch.</div> : (
+                                <div className="relative">
+                                    {commits.map((commit) => <CommitTimelineItem key={commit.sha} commit={commit} />)}
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* Branches Tab */}
+                {activeTab === 'branches' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50/50 text-xs font-medium uppercase text-slate-500">
+                                    <tr>
+                                        <th className="px-6 py-4">Branch Name</th>
+                                        <th className="px-6 py-4">Last Commit</th>
+                                        <th className="px-6 py-4">Date</th>
+                                        <th className="px-6 py-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {branches.map((branch) => (
+                                        <tr key={branch.id} className="group hover:bg-slate-50/50">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="rounded-lg bg-blue-50 p-1.5 text-blue-600">
+                                                        <GitBranch className="h-4 w-4" />
+                                                    </div>
+                                                    <span className="font-medium text-slate-900">{branch.name}</span>
+                                                    {branch.isDefault && <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">Default</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 max-w-md truncate text-slate-600">{branch.lastCommitMessage || '—'}</td>
+                                            <td className="px-6 py-4 text-slate-500 font-mono text-xs">{branch.lastCommitAt || '—'}</td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button
+                                                    onClick={() => handleGoToBranch(branch.name)}
+                                                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                >
+                                                    View History
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </motion.div>
+                )}
+            </main>
+        </div>
     );
 }
 
-/* ---------- Overview Tab ---------- */
-const OverviewTab: React.FC<{
-    branchesCount: number;
-    commitsCount: number;
-    lastUpdated: string;
-    defaultBranch: string;
-}> = ({ branchesCount, commitsCount, lastUpdated, defaultBranch }) => {
-    const kpis = [
-        { label: 'Branches', value: String(branchesCount) },
-        { label: 'Commits (loaded)', value: String(commitsCount) },
-        { label: 'Last Updated', value: lastUpdated },
-        { label: 'Default Branch', value: defaultBranch },
-    ];
+/* ---------------------------------------------
+   OVERVIEW CONTENT WIDGETS
+   --------------------------------------------- */
+
+const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { repo: Repo, commits: any[], languageColor: string, repoLanguage: string }) => {
+
+    // Top Contributors
+    const topContributors = useMemo(() => {
+        const counts: Record<string, number> = {};
+        commits.forEach(c => {
+            const name = c.authorName !== 'Unknown' ? c.authorName : (c.authorLogin !== 'unknown' ? c.authorLogin : 'Anonymous');
+            counts[name] = (counts[name] || 0) + 1;
+        });
+        return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count }));
+    }, [commits]);
+
+    // Latest Commit
+    const latestCommit = commits.length > 0 ? commits[0] : null;
+    const cloneUrl = repo.htmlUrl ? `${repo.htmlUrl}.git` : 'https://github.com/.../repo.git';
+
+    // Activity Analysis (Gerçek Veri)
+    const activityInfo = useMemo(() => {
+        if (!latestCommit) return { status: 'Unknown', color: 'text-slate-500', bg: 'bg-slate-100' };
+        const now = new Date();
+        const lastDate = latestCommit.rawDate;
+        const diffDays = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
+        if (diffDays < 7) return { status: 'Active Development', color: 'text-emerald-600', bg: 'bg-emerald-50' };
+        if (diffDays < 30) return { status: 'Maintained', color: 'text-blue-600', bg: 'bg-blue-50' };
+        if (diffDays < 180) return { status: 'Slow Activity', color: 'text-orange-600', bg: 'bg-orange-50' };
+        return { status: 'Dormant / Archived', color: 'text-slate-600', bg: 'bg-slate-100' };
+    }, [latestCommit]);
 
     return (
-        <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {kpis.map((k) => (
-                    <div key={k.label} className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <div className="text-xs text-slate-500">{k.label}</div>
-                        <div className="mt-1 text-lg font-semibold text-slate-900">{k.value}</div>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+            {/* SOL KOLON */}
+            <div className="lg:col-span-2 space-y-6">
+
+                {/* 1. Repository Intelligence Card (YENİLENDİ: Boşsa "Cockpit" göster) */}
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    {repo.description ? (
+                        <>
+                            <div className="flex items-center gap-2 mb-4">
+                                <FileText className="h-5 w-5 text-slate-400" />
+                                <h3 className="text-lg font-semibold text-slate-900">About Repository</h3>
+                            </div>
+                            <p className="text-sm leading-relaxed text-slate-600 mb-6">{repo.description}</p>
+                        </>
+                    ) : (
+                        // BOŞSA GÖSTERİLECEK AKILLI ALAN (COCKPIT)
+                        <div className="mb-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Activity className="h-5 w-5 text-slate-400" />
+                                    <h3 className="text-lg font-semibold text-slate-900">Repository Intelligence</h3>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${activityInfo.bg} ${activityInfo.color} border border-transparent`}>
+                                    {activityInfo.status}
+                                </span>
+                            </div>
+
+                            {/* Fake Terminal for Clone */}
+                            <div className="rounded-xl bg-[#1e293b] border border-slate-800 overflow-hidden shadow-md">
+                                <div className="flex items-center gap-1.5 px-4 py-2 bg-[#0f172a] border-b border-slate-800">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
+                                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
+                                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/80"></div>
+                                    <div className="ml-auto text-[10px] text-slate-500 font-mono">bash</div>
+                                </div>
+                                <div className="px-4 py-3 flex items-center justify-between group">
+                                    <code className="font-mono text-sm text-green-400 truncate mr-4">
+                                        <span className="text-slate-500 select-none">$ </span>
+                                        git clone {cloneUrl}
+                                    </code>
+                                    <CopyButton text={`git clone ${cloneUrl}`} className="text-slate-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </div>
+                            </div>
+
+                            {/* Latest Activity Snippet */}
+                            {latestCommit && (
+                                <div className="mt-4 flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                                    <div className="mt-1">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm text-blue-600">
+                                            <Zap className="h-4 w-4" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Latest Pulse</div>
+                                        <p className="text-sm font-medium text-slate-900 line-clamp-1">{latestCommit.message}</p>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            committed by <span className="font-medium text-slate-700">{latestCommit.authorName}</span> • {latestCommit.date}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Meta Data Footer */}
+                    <div className="pt-6 border-t border-slate-100 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                        <div className="space-y-1">
+                            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">License</div>
+                            <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                                <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                                {(repo as any).license?.name || 'No License'}
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Created</div>
+                            <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+                                <Clock className="h-4 w-4 text-blue-500" />
+                                {new Date(repo.createdAt ?? '').toLocaleDateString()}
+                            </div>
+                        </div>
                     </div>
-                ))}
+                </div>
+
+                {/* 2. Language Dominance */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center gap-2 mb-6">
+                        <Code2 className="h-5 w-5 text-slate-400" />
+                        <h3 className="text-lg font-semibold text-slate-900">Dominant Language</h3>
+                    </div>
+
+                    <div className="flex h-4 w-full overflow-hidden rounded-full bg-slate-100 ring-4 ring-white shadow-sm">
+                        <div style={{ width: '100%', backgroundColor: languageColor }} title={repoLanguage} />
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: languageColor }} />
+                            <span className="text-sm font-medium text-slate-900">{repoLanguage}</span>
+                            <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">Primary</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+
+            {/* SAĞ KOLON */}
+            <div className="space-y-6">
+
+                {/* 1. Contributors */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Users className="h-5 w-5 text-slate-400" />
+                            <h3 className="text-base font-semibold text-slate-900">Top Contributors</h3>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {topContributors.length > 0 ? topContributors.map((contributor, idx) => (
+                            <div key={idx} className="flex items-center justify-between group">
+                                <div className="flex items-center gap-3">
+                                    <Avatar name={contributor.name} className="h-8 w-8 text-xs" />
+                                    <span className="text-sm font-medium text-slate-700 truncate max-w-[120px]">
+                                        {contributor.name}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="h-1.5 w-16 bg-slate-100 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-blue-500 rounded-full"
+                                            style={{ width: `${Math.min((contributor.count / (topContributors[0].count)) * 100, 100)}%` }}
+                                        />
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-500">{contributor.count}</span>
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="text-sm text-slate-400 py-2">No commit data available.</div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 2. Health */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Activity className="h-5 w-5 text-slate-400" />
+                        <h3 className="text-base font-semibold text-slate-900">Repository Health</h3>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                            <div className="flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4 text-orange-500" />
+                                <span className="text-sm font-medium text-slate-700">Open Issues</span>
+                            </div>
+                            <span className="text-sm font-bold text-slate-900">{repo.openIssues ?? 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                            <div className="flex items-center gap-2">
+                                <GitFork className="h-4 w-4 text-purple-500" />
+                                <span className="text-sm font-medium text-slate-700">Forks</span>
+                            </div>
+                            <span className="text-sm font-bold text-slate-900">{repo.forks ?? 0}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </motion.div>
     );
 };
-
-/* ---------- Commits Tab ---------- */
-const CommitsTab: React.FC<{
-    commits: any[];
-    branches: any[];
-    branchFilter: string;
-    setBranchFilter: (b: string) => void;
-    isLoading?: boolean;
-    error?: string | null;
-}> = ({ commits, branches, branchFilter, setBranchFilter, isLoading, error }) => (
-    <div className="grid gap-4 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-            <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-                        <Search className="h-4 w-4 text-slate-500" />
-                        <input
-                            className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                            placeholder="Search commits…"
-                        />
-                    </div>
-
-                    <select
-                        value={branchFilter}
-                        onChange={(e) => setBranchFilter(e.target.value)}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                    >
-                        <option value="all">All branches</option>
-                        {branches.map((b) => (
-                            <option key={b.id} value={b.name}>
-                                {b.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="mt-3 max-h-80 overflow-y-auto pr-1">
-                    {isLoading && <p className="text-xs text-slate-400">Loading commits…</p>}
-                    {error && <p className="text-xs text-red-500">{error}</p>}
-
-                    <ul className="divide-y divide-slate-200">
-                        {commits.map((c) => (
-                            <li key={c.sha} className="flex items-center gap-3 py-3">
-                                <Avatar name={c.author} />
-
-                                <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-slate-800">
-                                        {c.message}
-                                    </div>
-                                    <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-                                        <span>{c.date}</span>
-                                        {c.branch === 'master' && (
-                                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 ring-1 ring-emerald-200">
-                                                Default
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-                                    <span className="font-mono">{c.sha.slice(0, 7)}</span>
-                                    <a
-                                        href={c.url}
-                                        className="text-slate-400 hover:text-slate-600"
-                                        target="_blank"
-                                    >
-                                        <ExternalLink className="h-4 w-4" />
-                                    </a>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="mb-2 flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-slate-800">Branches</h4>
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                </div>
-
-                <ul className="space-y-2">
-                    {branches.map((b) => (
-                        <li key={b.id} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
-                            <span className="inline-flex items-center gap-2">
-                                <GitBranchIcon className="h-4 w-4 text-slate-500" />
-                                <span className="font-medium text-slate-800">{b.name}</span>
-
-                                {b.isDefault && (
-                                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 ring-1 ring-emerald-200">
-                                        Default
-                                    </span>
-                                )}
-                            </span>
-                            <span className="text-xs text-slate-500">{b.lastCommitAt}</span>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-        </div>
-    </div>
-);
-
-/* ---------- Branches Tab ---------- */
-const BranchesTab: React.FC<{
-    branches: any[];
-    defaultBranch: string;
-    repoId?: string | number;
-}> = ({ branches, defaultBranch, repoId }) => (
-    <div className="overflow-hidden rounded-2xl border border-slate-200">
-        <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-500">
-                <tr>
-                    <th className="px-4 py-2">Branch</th>
-                    <th className="px-4 py-2">Last Commit</th>
-                    <th className="px-4 py-2" />
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-                {branches.map((b) => (
-                    <tr key={b.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-2">
-                            <span className="inline-flex items-center gap-2">
-                                <GitBranchIcon className="h-4 w-4 text-slate-500" />
-                                <span className="font-medium text-slate-800">{b.name}</span>
-
-                                {b.name === defaultBranch && (
-                                    <span className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">
-                                        default
-                                    </span>
-                                )}
-                            </span>
-                        </td>
-
-                        <td className="px-4 py-2 text-slate-600">
-                            {b.lastCommitMessage ?? '—'}
-                        </td>
-
-                        <td className="px-4 py-2 text-right">
-                            {repoId ? (
-                                <Link
-                                    to={`/repositories/${encodeURIComponent(
-                                        String(repoId)
-                                    )}/branches/${encodeURIComponent(b.name)}/commits`}
-                                    state={{ branchName: b.name }}
-                                    className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800"
-                                >
-                                    View commits
-                                    <ChevronRight className="h-3.5 w-3.5" />
-                                </Link>
-                            ) : (
-                                <span className="text-xs text-slate-400">View commits</span>
-                            )}
-                        </td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
-    </div>
-);

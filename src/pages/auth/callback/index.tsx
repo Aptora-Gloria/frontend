@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { login } from '@/shared/lib/auth-api';
-import { STORAGE_KEYS, IS_DEVELOPMENT, ROUTES } from '@/shared/lib/constants';
+import { STORAGE_KEYS, IS_DEVELOPMENT } from '@/shared/lib/constants';
+import { Loader2, AlertCircle } from 'lucide-react'; // Error ikonu için AlertCircle ekledim
 
 export const AuthCallbackPage = () => {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -66,29 +68,24 @@ export const AuthCallbackPage = () => {
           console.log('Login response:', response);
           console.log('JWT Token received:', response?.accessToken);
         }
-        
+
         if (!response || !response.accessToken) {
           throw new Error('Invalid response from backend: missing accessToken');
         }
-        
+
         // setAuthToken already calls refreshUser internally, but we await it here
         // to ensure user data is loaded before navigation
         await setAuthToken(response.accessToken);
-        
+
         // setIsLoading false yap, isAuthenticated useEffect'i navigate edecek
         setIsLoading(false);
       } catch (err: unknown) {
         console.error('Auth callback failed:', err);
-        console.error('Error details:', {
-          error: err,
-          type: typeof err,
-          isAxiosError: err && typeof err === 'object' && 'isAxiosError' in err,
-        });
-        
+
         // Clear any existing token on error and update auth context
         localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
         logout(); // Update AuthContext state
-        
+
         let errorMessage = 'Authentication failed. Please try again.';
 
         if (err && typeof err === 'object' && 'response' in err) {
@@ -98,12 +95,11 @@ export const AuthCallbackPage = () => {
           if (axiosError.response) {
             const status = axiosError.response.status;
             const responseData = axiosError.response.data;
-            
+
             // Check for specific error messages
             if (responseData && typeof responseData === 'object') {
               const message = 'message' in responseData ? String(responseData.message) : 'Unknown error';
-              
-              // Check for client_secret related errors
+
               if (
                 message.toLowerCase().includes('client_secret') ||
                 message.toLowerCase().includes('client secret') ||
@@ -112,20 +108,15 @@ export const AuthCallbackPage = () => {
               ) {
                 errorMessage = `Backend authentication error: ${message}. Please check if GITHUB_CLIENT_SECRET is configured correctly in your backend.`;
               } else if (status === 403) {
-                errorMessage = `Access forbidden (403). Please check:\n1. Backend CORS is configured to allow http://localhost:5173\n2. /auth/login endpoint is in permitAll() in SecurityConfig\n3. Backend server is running on correct port`;
+                errorMessage = `Access forbidden (403). Please check CORS and SecurityConfig settings.`;
               } else if (status === 429) {
                 errorMessage = 'Too many requests. Please wait a few minutes before trying again.';
               } else {
                 errorMessage = `Authentication failed (${status}): ${message}`;
               }
             } else {
-              // Handle string responses (like "Forbidden")
               const dataString = String(responseData);
-              if (status === 403) {
-                errorMessage = `Access forbidden (403): ${dataString}. Please check backend CORS and SecurityConfig settings.`;
-              } else {
-                errorMessage = `Authentication failed (${status}): ${dataString}`;
-              }
+              errorMessage = `Authentication failed (${status}): ${dataString}`;
             }
           } else if ('message' in err) {
             errorMessage = `Network error: ${String(err.message)}. Please check if the backend server is running.`;
@@ -148,47 +139,109 @@ export const AuthCallbackPage = () => {
     }
   }, [isLoading, authLoading, isAuthenticated, error, navigate]);
 
+  // ORTAK ARKA PLAN YAPISI (DRY Prensibi)
+  const BackgroundEffects = () => (
+    <>
+      <div
+        className="absolute -top-[30%] left-1/2 h-[100vh] w-[150vw] -translate-x-1/2 rounded-full opacity-40 blur-3xl pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, rgba(255, 255, 255, 0) 70%)'
+        }}
+      />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-blue-100/30 blur-[100px] mix-blend-multiply pointer-events-none" />
+    </>
+  );
+
   if (isLoading) {
     return (
-      <main className="p-6">
-        <div className="max-w-md mx-auto mt-20 text-center">
-          <h1 className="text-2xl font-semibold mb-4">Authenticating...</h1>
-          <p className="text-gray-600">Please wait while we sign you in.</p>
-        </div>
-      </main>
+      // ANA KAPSAYICI: Tam ekran, ortalanmış ve arka plan efektli
+      <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-white text-slate-900">
+        <BackgroundEffects />
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="relative z-10 flex flex-col items-center gap-6"
+        >
+
+          {/* LOADER KUTUSU */}
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg shadow-slate-200/50 ring-1 ring-slate-100">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
+            <div className="absolute inset-0 rounded-2xl bg-blue-500/5 animate-pulse" />
+          </div>
+
+          {/* METİN (İNGİLİZCE) */}
+          <div className="flex flex-col items-center gap-2 text-center">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Verifying your account...
+            </h2>
+            <p className="text-sm text-slate-500 max-w-[300px]">
+              Please wait while we securely redirect you to your dashboard.
+            </p>
+          </div>
+
+          {/* PROGRESS BAR */}
+          <div className="h-1 w-32 overflow-hidden rounded-full bg-slate-100">
+            <motion.div
+              className="h-full bg-slate-900"
+              initial={{ x: '-100%' }}
+              animate={{ x: '100%' }}
+              transition={{
+                repeat: Infinity,
+                duration: 1.5,
+                ease: "easeInOut"
+              }}
+            />
+          </div>
+
+        </motion.div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className="p-6">
-        <div className="max-w-md mx-auto mt-20 text-center">
-          <h1 className="text-2xl font-semibold mb-4 text-red-600">Authentication Error</h1>
-          <p className="text-gray-600 mb-4 whitespace-pre-wrap">{error}</p>
-          <div className="space-y-2">
+      // ERROR EKRANI: Artık bu da tam ortalanmış ve şık görünüyor
+      <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-white text-slate-900">
+        <BackgroundEffects />
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10 max-w-md w-full px-6 text-center"
+        >
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-600 ring-1 ring-red-100">
+            <AlertCircle className="h-8 w-8" />
+          </div>
+
+          <h1 className="text-2xl font-bold mb-3 text-slate-900">Authentication Error</h1>
+          <p className="text-slate-500 mb-8 whitespace-pre-wrap text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
+            {error}
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
             <button
               onClick={() => {
-                // Ensure tokens are cleared before navigating
-                localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-                navigate('/dashboard', { replace: true });
-              }}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2"
-            >
-              Go to Dashboard
-            </button>
-            <button
-              onClick={() => {
-                // Clear everything and reload to start fresh
                 localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
                 window.location.href = '/';
               }}
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20"
             >
               Try Again
             </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+                navigate('/dashboard', { replace: true });
+              }}
+              className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl font-medium hover:bg-slate-50 transition-colors"
+            >
+              Go to Dashboard
+            </button>
           </div>
-        </div>
-      </main>
+        </motion.div>
+      </div>
     );
   }
 

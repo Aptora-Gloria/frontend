@@ -13,7 +13,8 @@ export { AuthCallbackPage } from './auth/callback/index';
 export { default as RepositoriesPage } from './repositories/RepositoriesPage';
 export { default as RepoDetailPage } from './repositories/RepoDetailPage';
 
-// Profile (şimdilik placeholder olabilir)
 export { default as ProfilePage } from './profile/ProfilePage';
 
 export { default as BranchCommitsPage } from './commits/BranchCommitsPage';
+
+export { default as OrganizationsPage } from './organizations/OrganizationsPage';

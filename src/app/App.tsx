@@ -1,4 +1,3 @@
-// src/app/App.tsx
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import {
@@ -9,6 +8,7 @@ import {
   RepoDetailPage,
   ProfilePage,
   BranchCommitsPage,
+  OrganizationsPage,
 } from '@/pages';
 import { ProtectedRoute } from '@/shared/components';
 import AppLayout from './AppLayout';
@@ -56,6 +56,30 @@ export default function App() {
         }
       />
 
+      {/* Branch Commits (Timeline) */}
+      <Route
+        path="/repositories/:repoId/branches/:branchName/commits"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <BranchCommitsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Organizations (YENİ EKLENDİ) */}
+      <Route
+        path="/organizations"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <OrganizationsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
       {/* Profile */}
       <Route
         path="/profile"
@@ -63,18 +87,6 @@ export default function App() {
           <ProtectedRoute>
             <AppLayout>
               <ProfilePage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Branch Commits */}
-      <Route
-        path="/repositories/:repoId/branches/:branchName/commits"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <BranchCommitsPage />
             </AppLayout>
           </ProtectedRoute>
         }

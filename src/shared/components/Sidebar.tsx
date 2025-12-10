@@ -7,6 +7,7 @@ import {
     Settings,
     LogOut,
 } from "lucide-react";
+// Context yolunu kendi projene göre kontrol et, hata verirse düzelt
 import { useAuth } from "@/shared/contexts/AuthContext";
 
 const navItems = [
@@ -14,74 +15,115 @@ const navItems = [
     { key: "Repositories", icon: GitBranch, to: "/repositories" },
     { key: "Organizations", icon: Building2, to: "/organizations" },
     { key: "Profile", icon: User, to: "/profile" },
-    { key: "Settings", icon: Settings, to: "/settings" },
 ];
 
-export default function Sidebar() {
-    const navigate = useNavigate();
-    const { logout } = useAuth();
+// 1. Sidebar'a dışarıdan gelecek fonksiyonu tanımlıyoruz
+interface SidebarProps {
+    onOpenSettings?: () => void;
+}
 
-    /** Very safe logout */
+export default function Sidebar({ onOpenSettings }: SidebarProps) {
+    const navigate = useNavigate();
+    const { logout, user } = useAuth();
+
+    /** Safe logout */
     const handleLogout = () => {
         logout();
-
-        // Router update'in doğru çalışması için küçük delay
         setTimeout(() => navigate("/login"), 0);
     };
 
     return (
-        <aside className="fixed inset-y-0 left-0 z-40 w-[260px] border-r border-slate-200 bg-white/80 backdrop-blur">
-            {/* Brand */}
-            <div className="flex h-17 items-center gap-2 border-b border-slate-200 px-4">
-                <div className="h-6 w-6 rounded-full border-4 border-slate-300" />
-                <span className="font-semibold text-slate-800">Optimeric</span>
+        <aside className="fixed inset-y-0 left-0 z-40 flex w-[280px] flex-col border-r border-slate-100 bg-white text-slate-600">
+
+            {/* --- MARKA ALANI --- */}
+            <div className="flex h-20 items-center px-6">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div className="h-4 w-4 rounded-full border-[2.5px] border-slate-900" />
+                    </div>
+                    <div className="flex flex-col justify-center">
+                        <span className="text-xl font-bold tracking-tight text-slate-900 leading-none">
+                            Optimetric
+                        </span>
+                    </div>
+                </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="p-3">
+            {/* --- NAVİGASYON --- */}
+            <nav className="flex-1 space-y-1 px-4 py-4">
                 {navItems.map(({ key, icon: Icon, to }) => (
                     <NavLink
                         key={key}
                         to={to}
                         end={to === "/dashboard"}
                         className={({ isActive }) =>
-                            [
-                                "group relative mb-1 flex h-9 items-center overflow-hidden rounded-xl px-3 text-sm transition",
-                                isActive ? "bg-slate-100" : "hover:bg-slate-100",
-                            ].join(" ")
+                            `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${isActive
+                                ? "bg-slate-100 text-slate-900 shadow-sm"
+                                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                            }`
                         }
                     >
                         {({ isActive }) => (
                             <>
-                                <span
-                                    className={`absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full transition ${isActive
-                                            ? "bg-sky-400 opacity-100"
-                                            : "bg-sky-300 opacity-0 group-hover:opacity-100"
+                                <Icon
+                                    className={`h-[18px] w-[18px] transition-colors ${isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
                                         }`}
+                                    strokeWidth={isActive ? 2.5 : 2}
                                 />
-                                <Icon className="mr-3 h-4 w-4 text-slate-500 group-hover:text-slate-700" />
-                                <span
-                                    className={`truncate ${isActive ? "font-medium text-slate-800" : "text-slate-700"
-                                        }`}
-                                >
-                                    {key}
-                                </span>
+                                <span>{key}</span>
                             </>
                         )}
                     </NavLink>
                 ))}
+
+                {/* --- AYARLAR BUTONU (EKLENDİ) --- */}
+                {/* Diğer linklerle aynı stilde ama NavLink değil Button */}
+                <button
+                    onClick={onOpenSettings}
+                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
+                >
+                    <Settings
+                        className="h-[18px] w-[18px] text-slate-400 transition-colors group-hover:text-slate-600"
+                        strokeWidth={2}
+                    />
+                    <span>Settings</span>
+                </button>
+
             </nav>
 
-            {/* Logout Button */}
-            <div className="absolute bottom-3 w-full px-3">
+            {/* --- ALT KISIM: PROFİL & LOGOUT --- */}
+            <div className="border-t border-slate-100 p-4">
+
+                {/* Profil Bilgisi */}
+                <div className="mb-4 flex items-center gap-3 px-1">
+                    {user?.avatar_url ? (
+                        <img
+                            src={user.avatar_url}
+                            alt="User"
+                            className="h-11 w-11 rounded-full border border-slate-200 bg-slate-50 object-cover"
+                        />
+                    ) : (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 border border-slate-200 text-sm font-bold text-slate-600">
+                            {user?.name?.[0] || "U"}
+                        </div>
+                    )}
+
+                    <div className="flex flex-col overflow-hidden">
+                        <span className="truncate text-sm font-semibold text-slate-900">
+                            {user?.name || "User Name"}
+                        </span>
+                        <span className="truncate text-xs text-slate-500 font-medium">
+                            @{user?.login || "userlogin"}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Logout Butonu */}
                 <button
                     onClick={handleLogout}
-                    className="
-            flex w-full items-center gap-3 rounded-xl px-3 py-2
-            text-sm text-slate-700 hover:bg-slate-100 transition
-          "
+                    className="group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm font-medium text-slate-500 transition-all hover:border-slate-200 hover:bg-slate-50 hover:text-red-600 hover:shadow-sm"
                 >
-                    <LogOut className="h-4 w-4 text-slate-500" />
+                    <LogOut className="h-[18px] w-[18px] text-slate-400 transition-colors group-hover:text-red-500" />
                     <span>Logout</span>
                 </button>
             </div>

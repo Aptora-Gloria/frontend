@@ -6,6 +6,7 @@ import { buildGitHubAuthUrl } from '../../features/auth-login/lib/buildGitHubAut
 import { useAuth } from '@/shared/contexts/AuthContext';
 
 export const LoginPage = () => {
+  // Artık kesinlikle Light Mode'dayız.
   const [dark] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated, isLoading } = useAuth();
@@ -19,7 +20,6 @@ export const LoginPage = () => {
     }
   }, [dark]);
 
-  // Eğer kullanıcı zaten authenticated ise dashboard'a yönlendir
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
       navigate('/dashboard', { replace: true });
@@ -29,7 +29,7 @@ export const LoginPage = () => {
   const refreshPage = () => {
     window.location.reload();
   };
-  
+
   const handleTitleKey = (e: KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -47,58 +47,74 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden selection:bg-slate-900/10 dark:selection:bg-white/10">
-      {/* Background */}
+    // ZEMİN: Saf Beyaz.
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-white text-slate-900 selection:bg-blue-100">
+
+      {/* --- MAVİ/SİYAH ATMOSFER (TAM TERSİ EFEKT) --- */}
+      {/* Karanlıkta ışık yakmak yerine, beyaz zemine renkli bir 'hale' ekliyoruz. */}
+
+      {/* 1. Katman: Çok geniş, silik bir Mavi/Gri gradyan. Sayfanın altına derinlik katar. */}
       <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
+        className="absolute -top-[30%] left-1/2 h-[100vh] w-[150vw] -translate-x-1/2 rounded-full opacity-40 blur-3xl pointer-events-none"
         style={{
-          background:
-            'radial-gradient(ellipse at center, rgba(2,6,23,0.65) 0%, rgba(30,41,59,0.45) 40%, rgba(51,65,85,0.25) 65%, transparent 90%)',
+          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, rgba(255, 255, 255, 0) 70%)' // Hafif Mavi Hale
         }}
       />
 
-      {/* Center content */}
-      <div className="relative mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 text-center">
-        {/* Logo + Title */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-4 flex items-center gap-3"
-        >
-          <span className="inline-block h-6 w-6 rounded-full border-4 border-slate-400/70 dark:border-slate-500/70" />
-          <motion.h1
-            role="button"
-            tabIndex={0}
-            onClick={refreshPage}
-            onKeyDown={handleTitleKey}
-            title="Sayfayı yenile"
-            whileTap={{ scale: 0.97 }}
-            className="cursor-pointer select-none text-3xl font-semibold tracking-tight text-slate-800 outline-none dark:text-slate-100"
-          >
-            Optimetric
-          </motion.h1>
-        </motion.div>
+      {/* 2. Katman: Tam arkada daha yoğun ama küçük bir Lacivert/Siyah odak noktası */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-blue-100/30 blur-[100px] mix-blend-multiply pointer-events-none" />
 
-        <p className="mb-8 text-slate-500 dark:text-slate-400">
-          Sign in to your dashboard
+
+      {/* --- İÇERİK --- */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="relative z-10 flex w-full max-w-[380px] flex-col items-center gap-8 px-6 text-center"
+      >
+
+        {/* LOGO ALANI */}
+        <div className="flex flex-col items-center gap-5">
+          {/* Logo Kutusu: Beyazın üstünde net durması için hafif bir gölge ve border */}
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] ring-1 ring-slate-900/5">
+            {/* İkon: Mavi veya Siyah tonlarında */}
+            <div className="h-6 w-6 rounded-full border-[3.5px] border-slate-900" />
+          </div>
+
+          <div className="space-y-2">
+            <h1
+              role="button"
+              tabIndex={0}
+              onClick={refreshPage}
+              onKeyDown={handleTitleKey}
+              className="cursor-pointer select-none text-3xl font-bold tracking-tight text-slate-900"
+            >
+              Optimetric
+            </h1>
+            <p className="text-[15px] font-medium text-slate-500">
+              Sign in to your dashboard
+            </p>
+          </div>
+        </div>
+
+        {/* BUTON: SİYAH (Mavi Vurgulu) */}
+        {/* "Mavi ya da Siyah olsun" dediğin için butonu SİYAH yapıp, hover'da hafif laciverte çalan bir ton verdim. */}
+        <motion.button
+          whileHover={{ scale: 1.02, y: -1 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={handleGitHubLogin}
+          className="group relative flex w-full items-center justify-center gap-3 rounded-xl bg-[#0f172a] py-4 px-6 text-[15px] font-semibold text-white shadow-xl shadow-slate-900/10 transition-all hover:bg-[#1e293b] hover:shadow-2xl hover:shadow-slate-900/20 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2"
+        >
+          <Github className="h-5 w-5 text-white transition-opacity group-hover:opacity-90" />
+          <span>Sign in with GitHub</span>
+        </motion.button>
+
+        {/* Alt bilgi: Silik yazı */}
+        <p className="mt-4 text-xs text-slate-400">
+          Secure access via GitHub Authentication
         </p>
 
-        {/* GitHub button */}
-        <motion.button
-          whileHover={{ y: -10, scale: 1.04 }}
-          whileTap={{ scale: 0.98, y: 0 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-          onClick={handleGitHubLogin}
-          className="group inline-flex items-center gap-3 rounded-full bg-slate-900 px-7 py-4 text-base font-medium text-white shadow-lg shadow-slate-900/20 transition-[filter,transform] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400 active:scale-[0.99] dark:bg-white dark:text-slate-900 dark:shadow-white/10 dark:focus-visible:ring-slate-600"
-        >
-          <span className="grid h-6 w-6 place-items-center rounded-full bg-black/40 group-hover:brightness-110 dark:bg-white/60">
-            <Github size={16} className="opacity-90" />
-          </span>
-          <span>Sign in with Github</span>
-        </motion.button>
-      </div>
+      </motion.div>
     </div>
   );
 };
