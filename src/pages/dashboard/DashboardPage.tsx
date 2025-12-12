@@ -41,6 +41,9 @@ import { Dropdown } from '@/shared/ui/dropdown';
 import { TabPill } from '@/shared/ui/tab';
 import { Avatar } from '@/shared/ui/avatar';
 import { LoadingSpinner } from '@/shared/ui/loading-spinner';
+import { ErrorState } from '@/shared/ui/error-state';
+import { useToast } from '@/shared/contexts/ToastContext';
+import type { AppError } from '@/shared/errors';
 
 /* ---------- TYPES ---------- */
 type ChartDataPoint = { date: string; displayDate: string; commits: number };
@@ -311,6 +314,7 @@ function getHeatmapData(commits: Commit[]): any[] {
 /* ---------- PAGE COMPONENT ---------- */
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { showError, showSuccess } = useToast();
 
   const [repos, setRepos] = useState<Repo[]>([]);
   const [selectedOrg, setSelectedOrg] = useState('all');
@@ -321,21 +325,41 @@ export default function DashboardPage() {
   const [loadingRepos, setLoadingRepos] = useState(true);
   const [loadingCommits, setLoadingCommits] = useState(false);
   const [weekRange, setWeekRange] = useState<WeekRange>('30d');
+  
+  // Error states
+  const [repoError, setRepoError] = useState<AppError | null>(null);
+  const [commitError, setCommitError] = useState<AppError | null>(null);
 
   // 1. REPO LOAD
   useEffect(() => {
-    const run = async () => {
+    const loadRepos = async () => {
       if (!user) return;
+      
       try {
         setLoadingRepos(true);
+        setRepoError(null);
+        
         let data = await getUserRepos();
-        if (!data.length) { await initUserRepos(); data = await getUserRepos(); }
+        if (!data.length) { 
+          await initUserRepos(); 
+          data = await getUserRepos(); 
+        }
+        
         setRepos(data);
-        if (!selectedRepoId && data[0]) setSelectedRepoId(data[0].id);
-      } finally { setLoadingRepos(false); }
+        if (!selectedRepoId && data[0]) {
+          setSelectedRepoId(data[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load repositories:', error);
+        setRepoError(error as AppError);
+        showError('Failed to load repositories. Please try again.');
+      } finally { 
+        setLoadingRepos(false); 
+      }
     };
-    run();
-  }, [user]);
+    
+    loadRepos();
+  }, [user, showError]);
 
   // ORG GROUPING
   const grouped = useMemo(() => {
@@ -370,16 +394,30 @@ export default function DashboardPage() {
 
     try {
       setLoadingCommits(true);
+      setCommitError(null);
+      
       const uniqueCommitsMap = new Map<string, Commit>();
       const recentsRaw: RecentCommit[] = [];
+      let hasErrors = false;
 
       // Her repoyu paralel işle
       await Promise.all(target.map(async (r) => {
         const fullName = r.fullName;
         try {
           // 1. Branchleri çek
-          let branches = await getBranchesByRepo(fullName).catch(() => []);
-          if (!branches.length) branches = await initBranchesByRepo(fullName).catch(() => []);
+          let branches = await getBranchesByRepo(fullName).catch((error) => {
+            console.warn(`Failed to fetch branches for ${fullName}:`, error);
+            hasErrors = true;
+            return [];
+          });
+          
+          if (!branches.length) {
+            branches = await initBranchesByRepo(fullName).catch((error) => {
+              console.warn(`Failed to initialize branches for ${fullName}:`, error);
+              hasErrors = true;
+              return [];
+            });
+          }
 
           // 2. Her branch için commitleri çek
           const branchPromises = branches.map(async (br) => {
@@ -398,6 +436,8 @@ export default function DashboardPage() {
               }
               return cList;
             } catch (e) {
+              console.warn(`Failed to fetch commits for ${fullName}/${br.name}:`, e);
+              hasErrors = true;
               return []; // Silinmiş branch hatasını yut
             }
           });
@@ -413,7 +453,8 @@ export default function DashboardPage() {
           });
 
         } catch (e) {
-          console.warn(`Error fetching for ${fullName}`, e);
+          console.warn(`Error fetching data for ${fullName}:`, e);
+          hasErrors = true;
         }
       }));
 
@@ -421,7 +462,20 @@ export default function DashboardPage() {
       recentsRaw.sort((a, b) => b.rawDate - a.rawDate);
       setRecent(recentsRaw.slice(0, 20));
 
-    } finally { setLoadingCommits(false); }
+      // Show success message for sync operations
+      if (forceSync && !hasErrors) {
+        showSuccess('Data synchronized successfully');
+      } else if (forceSync && hasErrors) {
+        showError('Some data could not be synchronized. Please try again.');
+      }
+
+    } catch (error) {
+      console.error('Failed to fetch commit data:', error);
+      setCommitError(error as AppError);
+      showError('Failed to load commit data. Please try again.');
+    } finally { 
+      setLoadingCommits(false); 
+    }
   };
 
   // 2. COMMIT FETCH (İlk yükleme - Cache'den hızlı açılış)
@@ -432,6 +486,38 @@ export default function DashboardPage() {
   // 3. HANDLERS
   const handleRefresh = () => {
     fetchData(true); // forceSync = true (GitHub'dan taze veri çek)
+  };
+
+  const handleRetryRepos = () => {
+    setRepoError(null);
+    // Trigger repo reload by updating user dependency
+    if (user) {
+      const loadRepos = async () => {
+        try {
+          setLoadingRepos(true);
+          let data = await getUserRepos();
+          if (!data.length) { 
+            await initUserRepos(); 
+            data = await getUserRepos(); 
+          }
+          setRepos(data);
+          if (!selectedRepoId && data[0]) {
+            setSelectedRepoId(data[0].id);
+          }
+        } catch (error) {
+          setRepoError(error as AppError);
+          showError('Failed to load repositories. Please try again.');
+        } finally { 
+          setLoadingRepos(false); 
+        }
+      };
+      loadRepos();
+    }
+  };
+
+  const handleRetryCommits = () => {
+    setCommitError(null);
+    fetchData(false);
   };
 
   // Derived Stats
@@ -520,7 +606,16 @@ export default function DashboardPage() {
 
       {/* 1. KPI CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {loadingRepos ? (
+        {repoError ? (
+          <div className="col-span-2 lg:col-span-4">
+            <ErrorState 
+              error={repoError} 
+              onRetry={handleRetryRepos}
+              size="sm"
+              className="bg-white rounded-xl border border-slate-200 shadow-sm"
+            />
+          </div>
+        ) : loadingRepos ? (
           <>
             <Skeleton className="h-[100px] w-full" />
             <Skeleton className="h-[100px] w-full" />
@@ -559,7 +654,15 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="h-64 w-full">
-            {loadingCommits ? <Skeleton className="w-full h-full" /> : (
+            {commitError ? (
+              <ErrorState 
+                error={commitError} 
+                onRetry={handleRetryCommits}
+                size="sm"
+              />
+            ) : loadingCommits ? (
+              <Skeleton className="w-full h-full" />
+            ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                   <defs>
@@ -585,7 +688,15 @@ export default function DashboardPage() {
         >
           <h3 className="text-sm font-bold text-slate-800 mb-6">Weekly Rhythm</h3>
           <div className="h-64 w-full">
-            {loadingCommits ? <Skeleton className="w-full h-full" /> : (
+            {commitError ? (
+              <ErrorState 
+                error={commitError} 
+                onRetry={handleRetryCommits}
+                size="sm"
+              />
+            ) : loadingCommits ? (
+              <Skeleton className="w-full h-full" />
+            ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={commitsByDay}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -611,7 +722,15 @@ export default function DashboardPage() {
         </div>
         <div className="w-full overflow-x-auto pb-2">
           <div className="min-w-[800px]">
-            {loadingCommits ? <Skeleton className="h-[140px] w-full" /> :
+            {commitError ? (
+              <ErrorState 
+                error={commitError} 
+                onRetry={handleRetryCommits}
+                size="sm"
+              />
+            ) : loadingCommits ? (
+              <Skeleton className="h-[140px] w-full" />
+            ) : (
               <CalendarHeatmap
                 startDate={new Date(new Date().setFullYear(new Date().getFullYear() - 1))}
                 endDate={new Date()}
@@ -624,7 +743,8 @@ export default function DashboardPage() {
                   'data-tip': value.date ? `${value.date}: ${value.count} commits` : 'No commits',
                 } as any)}
                 showWeekdayLabels
-              />}
+              />
+            )}
           </div>
         </div>
       </motion.div>

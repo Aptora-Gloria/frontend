@@ -33,6 +33,9 @@ import type { Repo } from "@/entities/repo";
 import { getUserRepos } from "@/shared/lib/repo-api";
 import { queryCommits, initCommits } from "@/shared/lib/commit-api";
 import { Avatar } from "@/shared/ui";
+import { useToast } from '@/shared/contexts/ToastContext';
+import { ErrorState } from '@/shared/ui/error-state';
+import type { AppError } from '@/shared/errors';
 
 /* ---------- Types & Mapper ---------- */
 
@@ -149,12 +152,15 @@ export default function BranchCommitsPage() {
 
     const stateRepo = location.state?.repo as Repo | undefined;
 
+    const { showError, showSuccess } = useToast();
+
     const [repo, setRepo] = useState<Repo | null>(stateRepo ?? null);
     const [commits, setCommits] = useState<any[]>([]);
     const [search, setSearch] = useState("");
     const [authorFilter, setAuthorFilter] = useState("all");
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<AppError | null>(null);
+    const [repoError, setRepoError] = useState<AppError | null>(null);
 
     /* ---------- Load Data ---------- */
     useEffect(() => {
@@ -164,9 +170,11 @@ export default function BranchCommitsPage() {
                 const data = await getUserRepos();
                 const found = data.find((r) => String(r.id) === String(repoId)) ?? null;
                 setRepo(found);
-            } catch (e) {
-                console.error(e);
-                setError("Repository information could not be loaded.");
+            } catch (error) {
+                console.error('Failed to load repository:', error);
+                const appError = error as AppError;
+                setRepoError(appError);
+                showError('Failed to load repository information.');
             }
         };
         loadRepo();
@@ -183,9 +191,12 @@ export default function BranchCommitsPage() {
                 const mappedData = data.map(mapCommitToItem);
                 mappedData.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
                 setCommits(mappedData);
-            } catch (e) {
+            } catch (err) {
+                console.error('Failed to load commits:', err);
+                const appError = err as AppError;
+                setError(appError);
                 setCommits([]);
-                setError("Failed to sync commits. Please try again.");
+                showError('Failed to load commits. Please try again.');
             } finally {
                 setIsLoading(false);
             }

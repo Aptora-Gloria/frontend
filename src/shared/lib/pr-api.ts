@@ -17,9 +17,9 @@ export const queryPullRequests = async (fullName: string, state: string = ''): P
     try {
         const response = await apiClient.get<PullRequestDto[]>(`/api/github/pull-requests/query?${params.toString()}`);
         return response.data.map(mapPrDtoToEntity);
-    } catch (e) {
-        console.warn("PR Query Error:", e);
-        return [];
+    } catch (error) {
+        console.error("Failed to query pull requests:", error);
+        throw error; // Re-throw to let caller handle
     }
 };
 
@@ -62,8 +62,8 @@ export const getPrMetrics = async (fullName: string, prNumber: number): Promise<
         );
         const foundItem = response.data.pullRequests.find(item => item.prNumber === prNumber);
         return foundItem ? mapPrMetricToEntity(foundItem) : null;
-    } catch (e) {
-        console.error("Metrics Sync Error:", e);
-        return null;
+    } catch (error) {
+        console.error("Failed to sync PR metrics:", error);
+        throw error; // Re-throw to let caller handle
     }
 };

@@ -37,6 +37,9 @@ import { initCommits, queryCommits } from '@/shared/lib/commit-api';
 import { queryPullRequests, initPullRequests } from '@/shared/lib/pr-api';
 import type { PullRequest } from '@/entities/pull-request';
 import { Avatar } from '@/shared/ui';
+import { useToast } from '@/shared/contexts/ToastContext';
+import { ErrorState } from '@/shared/ui/error-state';
+import type { AppError } from '@/shared/errors';
 
 /* ---------- Language Color Map ---------- */
 const LANG_COLOR: Record<string, string> = {
@@ -178,6 +181,7 @@ export default function RepoDetailPage() {
     const { repoId } = useParams<{ repoId: string }>();
     const location = useLocation();
     const navigate = useNavigate();
+    const { showError, showSuccess } = useToast();
     const state = location.state as { repo?: Repo } | null;
 
     const [repo, setRepo] = useState<Repo | null>(state?.repo ?? null);
@@ -191,9 +195,78 @@ export default function RepoDetailPage() {
     const [isLoadingCommits, setIsLoadingCommits] = useState(false);
     const [isLoadingPrs, setIsLoadingPrs] = useState(false);
 
+    // Error states
+    const [repoError, setRepoError] = useState<AppError | null>(null);
+    const [branchError, setBranchError] = useState<AppError | null>(null);
+    const [commitError, setCommitError] = useState<AppError | null>(null);
+    const [prError, setPrError] = useState<AppError | null>(null);
+
     // TAB GÜNCELLENDİ
     const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'branches' | 'pull-requests'>('overview');
     const [branchFilter, setBranchFilter] = useState<string>('all');
+
+    // Retry handlers
+    const handleRetryRepo = async () => {
+        if (!repoId) return;
+        setRepoError(null);
+        try {
+            setIsLoadingRepo(true);
+            const all = await getUserRepos();
+            const found = all.find((r) => String(r.id) === String(repoId)) ?? null;
+            setRepo(found);
+        } catch (error) {
+            const appError = error as AppError;
+            setRepoError(appError);
+            showError('Failed to load repository details.');
+        } finally {
+            setIsLoadingRepo(false);
+        }
+    };
+
+    const handleRetryBranches = async () => {
+        if (!repo?.fullName) return;
+        setBranchError(null);
+        try {
+            setIsLoadingBranches(true);
+            let list = await getBranchesByRepo(repo.fullName);
+            if (!list.length) {
+                await initBranchesByRepo(repo.fullName);
+                list = await getBranchesByRepo(repo.fullName);
+            }
+            setBranches(list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined)));
+        } catch (error) {
+            const appError = error as AppError;
+            setBranchError(appError);
+            showError('Failed to load branches.');
+        } finally {
+            setIsLoadingBranches(false);
+        }
+    };
+
+    const handleRetryCommits = async () => {
+        if (!repo?.fullName || !branches.length) return;
+        setCommitError(null);
+        // Commit loading logic buraya gelecek - mevcut useEffect'teki logic'i kopyala
+    };
+
+    const handleRetryPrs = async () => {
+        if (!repo?.fullName) return;
+        setPrError(null);
+        try {
+            setIsLoadingPrs(true);
+            let data = await queryPullRequests(repo.fullName, 'all');
+            if (data.length === 0) {
+                data = await initPullRequests(repo.fullName, 'all');
+            }
+            setPrs(data);
+        } catch (error) {
+            const appError = error as AppError;
+            setPrError(appError);
+            showError('Failed to load pull requests.');
+        } finally {
+            setIsLoadingPrs(false);
+        }
+    };
 
     // 1. Repo Load
     useEffect(() => {
@@ -204,8 +277,11 @@ export default function RepoDetailPage() {
                 const all = await getUserRepos();
                 const found = all.find((r) => String(r.id) === String(repoId)) ?? null;
                 setRepo(found);
-            } catch (e) {
-                console.error(e);
+            } catch (error) {
+                console.error('Failed to load repository:', error);
+                const appError = error as AppError;
+                setRepoError(appError);
+                showError('Failed to load repository details.');
             } finally {
                 setIsLoadingRepo(false);
             }
@@ -225,8 +301,12 @@ export default function RepoDetailPage() {
                     list = await getBranchesByRepo(repo.fullName);
                 }
                 setBranches(list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined)));
-            } catch (e) {
+            } catch (error) {
+                console.error('Failed to load branches:', error);
+                const appError = error as AppError;
+                setBranchError(appError);
                 setBranches([]);
+                showError('Failed to load branches.');
             } finally {
                 setIsLoadingBranches(false);
             }
@@ -280,9 +360,12 @@ export default function RepoDetailPage() {
                 uniqueCommits.sort((a: any, b: any) => b.rawDate.getTime() - a.rawDate.getTime());
 
                 setCommits(uniqueCommits);
-            } catch (e) {
-                console.error("Genel commit çekme hatası:", e);
+            } catch (error) {
+                console.error("Failed to fetch commits:", error);
+                const appError = error as AppError;
+                setCommitError(appError);
                 setCommits([]);
+                showError('Failed to load commits.');
             } finally {
                 setIsLoadingCommits(false);
             }
@@ -306,8 +389,11 @@ export default function RepoDetailPage() {
                         data = await initPullRequests(repo.fullName, 'all');
                     }
                     setPrs(data);
-                } catch (e) {
-                    console.error("PR fetch error:", e);
+                } catch (error) {
+                    console.error("Failed to fetch pull requests:", error);
+                    const appError = error as AppError;
+                    setPrError(appError);
+                    showError('Failed to load pull requests.');
                 } finally {
                     setIsLoadingPrs(false);
                 }

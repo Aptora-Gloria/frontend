@@ -5,7 +5,10 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { login } from '@/shared/lib/auth-api';
 import { STORAGE_KEYS, IS_DEVELOPMENT } from '@/shared/lib/constants';
-import { Loader2, AlertCircle } from 'lucide-react'; // Error ikonu için AlertCircle ekledim
+import { Loader2, AlertCircle } from 'lucide-react';
+import { useToast } from '@/shared/contexts/ToastContext';
+import { ErrorState } from '@/shared/ui/error-state';
+import type { AppError } from '@/shared/errors';
 
 export const AuthCallbackPage = () => {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -13,7 +16,8 @@ export const AuthCallbackPage = () => {
   const errorParam = params.get('error');
   const navigate = useNavigate();
   const { login: setAuthToken, isAuthenticated, isLoading: authLoading, logout } = useAuth();
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess } = useToast();
+  const [error, setError] = useState<AppError | string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const hasHandledAuth = useRef(false);
   const hasNavigated = useRef(false);

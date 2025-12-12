@@ -1,9 +1,12 @@
+// src/shared/contexts/AuthContext.tsx
+
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import { getCurrentUser } from '@/shared/lib/auth-api';
 import type { GitHubUserDto } from '@/shared/lib/auth-api';
 import { STORAGE_KEYS, IS_DEVELOPMENT } from '@/shared/lib/constants';
+import type { AppError } from '@/shared/errors';
 
 interface AuthContextType {
   user: GitHubUserDto | null;
@@ -55,18 +58,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Failed to fetch user:", error);
 
-      // 401 ise token gerçekten geçersiz → cleanup
-      if (error && typeof error === "object" && "response" in error) {
-        const axiosError = error as { response?: { status?: number } };
-
-        if (axiosError.response?.status === 401) {
-          localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-          setUser(null);
-        } else {
-          // Network / 500 gibi durumlarda token'ı koru ama kullanıcıyı null yap
-          setUser(null);
-        }
+      // AppError tipinde ise status kontrolü yap
+      const appError = error as AppError;
+      
+      if (appError.status === 401) {
+        // Token geçersiz → cleanup
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        setUser(null);
       } else {
+        // Network / 500 gibi durumlarda token'ı koru ama kullanıcıyı null yap
         setUser(null);
       }
 
@@ -90,7 +90,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await refreshUser();
       } catch (err) {
         console.error("Login failed:", err);
+        const appError = err as AppError;
+        
+        // Login başarısız ise token'ı temizle
+        if (appError.status === 401 || appError.status === 403) {
+          localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        }
+        
         setUser(null);
+        throw err; // Re-throw to let caller handle
       }
     },
     [refreshUser],

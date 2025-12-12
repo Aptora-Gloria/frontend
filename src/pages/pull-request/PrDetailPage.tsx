@@ -14,6 +14,9 @@ import type { PullRequest, PrMetric } from '@/entities/pull-request';
 import type { Repo } from '@/entities/repo';
 import { getPrMetrics, getPrBasicInfo } from '@/shared/lib/pr-api';
 import { getUserRepos } from '@/shared/lib/repo-api';
+import { useToast } from '@/shared/contexts/ToastContext';
+import { ErrorState } from '@/shared/ui/error-state';
+import type { AppError } from '@/shared/errors';
 
 /* --- UI HELPER COMPONENTS --- */
 
@@ -105,10 +108,13 @@ export default function PrDetailPage() {
     const statePr = (location.state as any)?.pr as PullRequest | undefined;
     const stateRepo = (location.state as any)?.repo as Repo | undefined;
 
+    const { showError, showSuccess } = useToast();
+
     const [prBasic, setPrBasic] = useState<PullRequest | null>(statePr || null);
     const [prMetrics, setPrMetrics] = useState<PrMetric | null>(null);
     const [repoFullName, setRepoFullName] = useState<string | null>(stateRepo?.fullName || null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<AppError | null>(null);
     const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'reviews'>('overview');
 
     useEffect(() => {
@@ -139,8 +145,11 @@ export default function PrDetailPage() {
                 const metricsData = await getPrMetrics(currentFullName!, Number(prNumber));
                 if (metricsData) setPrMetrics(metricsData);
 
-            } catch (error) {
-                console.error("Fetch Error:", error);
+            } catch (err) {
+                console.error("Failed to load PR data:", err);
+                const appError = err as AppError;
+                setError(appError);
+                showError('Failed to load pull request data.');
             } finally {
                 setLoading(false);
             }

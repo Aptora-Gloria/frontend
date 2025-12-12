@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { getUserRepos, initUserRepos } from '@/shared/lib/repo-api';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { useToast } from '@/shared/contexts/ToastContext';
+import { ErrorState } from '@/shared/ui/error-state';
+import type { AppError } from '@/shared/errors';
 import {
     Building2,
     CalendarDays,
@@ -179,10 +182,11 @@ const RepoCardSkeleton = () => (
 
 const RepositoriesPage: React.FC = () => {
     const { user } = useAuth();
+    const { showError, showSuccess } = useToast();
 
     const [repos, setRepos] = useState<Repo[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<AppError | null>(null);
 
     // Filters States
     const [orgFilter, setOrgFilter] = useState<OrgFilter>('all');
@@ -204,15 +208,42 @@ const RepositoriesPage: React.FC = () => {
                     data = await getUserRepos();
                 }
                 setRepos(data);
-            } catch (e) {
-                console.error('Failed to load repos:', e);
-                setError('Repositories could not be loaded.');
+            } catch (err) {
+                console.error('Failed to load repositories:', err);
+                const appError = err as AppError;
+                setError(appError);
+                showError('Failed to load repositories. Please try again.');
             } finally {
                 setIsLoading(false);
             }
         };
         fetchRepos();
-    }, [user]);
+    }, [user, showError]);
+
+    const handleRetry = () => {
+        setError(null);
+        const fetchRepos = async () => {
+            if (!user) return;
+            try {
+                setIsLoading(true);
+                let data = await getUserRepos();
+                if (!data.length) {
+                    await initUserRepos();
+                    data = await getUserRepos();
+                }
+                setRepos(data);
+                showSuccess('Repositories loaded successfully');
+            } catch (err) {
+                console.error('Failed to load repositories:', err);
+                const appError = err as AppError;
+                setError(appError);
+                showError('Failed to load repositories. Please try again.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchRepos();
+    };
 
     // Derived Data
     const orgOptions = useMemo(() => Array.from(new Set(repos.map((r) => getOrgFromRepo(r)))).sort(), [repos]);
@@ -402,8 +433,12 @@ const RepositoriesPage: React.FC = () => {
                 </div>
 
                 {error && (
-                    <div className="mb-8 rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-600">
-                        {error}
+                    <div className="mb-8">
+                        <ErrorState 
+                            error={error} 
+                            onRetry={handleRetry}
+                            className="bg-white rounded-xl border border-slate-200 shadow-sm"
+                        />
                     </div>
                 )}
 
