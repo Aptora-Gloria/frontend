@@ -1,4 +1,3 @@
-// src/pages/repositories/RepoDetailPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -26,13 +25,17 @@ import {
     Unlock,
     Terminal,
     Zap,
-    History
+    History,
+    GitPullRequest, // EKLENDİ
+    ArrowRight      // EKLENDİ
 } from 'lucide-react';
 
 import type { Repo } from '@/entities/repo';
 import { getUserRepos } from '@/shared/lib/repo-api';
 import { getBranchesByRepo, initBranchesByRepo } from '@/shared/lib/branch-api';
 import { initCommits, queryCommits } from '@/shared/lib/commit-api';
+import { queryPullRequests, initPullRequests } from '@/shared/lib/pr-api';
+import type { PullRequest } from '@/entities/pull-request';
 import { Avatar } from '@/shared/ui';
 
 /* ---------- Language Color Map ---------- */
@@ -180,12 +183,16 @@ export default function RepoDetailPage() {
     const [repo, setRepo] = useState<Repo | null>(state?.repo ?? null);
     const [branches, setBranches] = useState<any[]>([]);
     const [commits, setCommits] = useState<any[]>([]);
+    // PR STATE EKLENDİ
+    const [prs, setPrs] = useState<PullRequest[]>([]);
 
     const [isLoadingRepo, setIsLoadingRepo] = useState(false);
     const [isLoadingBranches, setIsLoadingBranches] = useState(false);
     const [isLoadingCommits, setIsLoadingCommits] = useState(false);
+    const [isLoadingPrs, setIsLoadingPrs] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'branches'>('overview');
+    // TAB GÜNCELLENDİ
+    const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'branches' | 'pull-requests'>('overview');
     const [branchFilter, setBranchFilter] = useState<string>('all');
 
     // 1. Repo Load
@@ -228,47 +235,103 @@ export default function RepoDetailPage() {
     }, [repo]);
 
     // 3. Commits Load
+    // 3. Commits Load (DÜZELTİLMİŞ VERSİYON)
     useEffect(() => {
         if (!repo?.fullName || branches.length === 0) return;
+
         const fetchCommits = async () => {
             try {
                 setIsLoadingCommits(true);
                 const branchNames = branchFilter === 'all' ? branches.map((b) => b.name) : [branchFilter];
-                const allRawCommits: any[] = [];
 
-                for (const br of branchNames) {
-                    await initCommits(repo.fullName, br);
-                    const data = await queryCommits(repo.fullName, br);
-                    allRawCommits.push(...data.map((c: any) => mapCommitToItem(c, br)));
-                }
+                // Paralel olarak tüm branchler için istek atıyoruz
+                const promises = branchNames.map(async (br) => {
+                    try {
+                        // Önce init etmeyi dene (Database'e kaydet)
+                        await initCommits(repo.fullName, br);
+                        // Sonra commitleri çek
+                        const data = await queryCommits(repo.fullName, br);
+                        return data.map((c: any) => mapCommitToItem(c, br));
+                    } catch (err) {
+                        // KRİTİK NOKTA: Eğer bir branch silinmişse veya hata verirse,
+                        // sadece konsola uyarı yaz ve boş dizi döndür.
+                        // Böylece tüm süreç patlamaz!
+                        console.warn(`Branch '${br}' commitleri çekilemedi (silinmiş olabilir):`, err);
+                        return [];
+                    }
+                });
 
+                // Tüm sonuçları bekle (Hatalı olanlar [] döndürecek)
+                const results = await Promise.all(promises);
+
+                // İç içe dizileri tek bir diziye çevir (flat)
+                const allRawCommits = results.flat();
+
+                // Tekrarlanan commitleri (SHA'ya göre) temizle
                 const uniqueMap = new Map();
                 allRawCommits.forEach(item => {
                     if (!uniqueMap.has(item.sha)) {
                         uniqueMap.set(item.sha, item);
                     }
                 });
+
                 const uniqueCommits = Array.from(uniqueMap.values());
+                // Tarihe göre yeniden eskiye sırala
                 uniqueCommits.sort((a: any, b: any) => b.rawDate.getTime() - a.rawDate.getTime());
 
                 setCommits(uniqueCommits);
             } catch (e) {
-                console.error("Commits fetch error:", e);
+                console.error("Genel commit çekme hatası:", e);
                 setCommits([]);
             } finally {
                 setIsLoadingCommits(false);
             }
         };
+
         fetchCommits();
     }, [repo, branches, branchFilter]);
 
-    // --- DÜZELTİLDİ: DOĞRU URL'E GİTME ---
+    // 4. PR Load (YENİ EKLENDİ)
+    useEffect(() => {
+        if (!repo?.fullName) return;
+
+        // Sadece PR tabı açıksa veya hiç veri yoksa çekmeye çalış
+        if (activeTab === 'pull-requests' && prs.length === 0) {
+            const fetchPrs = async () => {
+                setIsLoadingPrs(true);
+                try {
+                    let data = await queryPullRequests(repo.fullName, 'all');
+                    // Eğer veritabanı boşsa GitHub'dan çek
+                    if (data.length === 0) {
+                        data = await initPullRequests(repo.fullName, 'all');
+                    }
+                    setPrs(data);
+                } catch (e) {
+                    console.error("PR fetch error:", e);
+                } finally {
+                    setIsLoadingPrs(false);
+                }
+            };
+            fetchPrs();
+        }
+    }, [repo, activeTab, prs.length]);
+
+
     const handleGoToBranch = (branchName: string) => {
         if (!repo) return;
-        // "/commits" EKİ EKLENDİ!
         navigate(`/repositories/${repo.id}/branches/${encodeURIComponent(branchName)}/commits`, {
             state: { repo, branchName }
         });
+    };
+
+    const handleSync = async () => {
+        if (!repo?.fullName) return;
+        // Tüm verileri yenile
+        await initBranchesByRepo(repo.fullName);
+        await getBranchesByRepo(repo.fullName);
+        // PR'ları da yenile
+        const newPrs = await initPullRequests(repo.fullName, 'all');
+        setPrs(newPrs);
     };
 
     const repoLanguage = repo?.language ?? 'Unknown';
@@ -327,11 +390,7 @@ export default function RepoDetailPage() {
                                 GitHub
                             </a>
                             <button
-                                onClick={async () => {
-                                    if (!repo.fullName) return;
-                                    await initBranchesByRepo(repo.fullName);
-                                    await getBranchesByRepo(repo.fullName);
-                                }}
+                                onClick={handleSync}
                                 className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-colors active:scale-95"
                             >
                                 <RefreshCw className="h-4 w-4" />
@@ -345,13 +404,14 @@ export default function RepoDetailPage() {
                         <StatBadge icon={GitFork} label="forks" value={repo.forks ?? 0} />
                         <StatBadge icon={Eye} label="watchers" value={repo.watchers ?? 0} />
                         <StatBadge icon={AlertCircle} label="issues" value={repo.openIssues ?? 0} />
-                        <StatBadge icon={GitBranch} label="default" value={repo.defaultBranch ?? 'main'} />
+                        <StatBadge icon={GitPullRequest} label="pull requests" value={prs.length > 0 ? prs.length : '-'} />
                     </div>
 
                     <div className="mt-6 flex gap-6 border-b border-slate-200">
                         <TabButton active={activeTab === 'overview'} label="Overview" onClick={() => setActiveTab('overview')} />
                         <TabButton active={activeTab === 'commits'} label="Commits" count={commits.length > 0 ? commits.length : undefined} onClick={() => setActiveTab('commits')} />
                         <TabButton active={activeTab === 'branches'} label="Branches" count={branches.length > 0 ? branches.length : undefined} onClick={() => setActiveTab('branches')} />
+                        <TabButton active={activeTab === 'pull-requests'} label="Pull Requests" count={prs.length > 0 ? prs.length : undefined} onClick={() => setActiveTab('pull-requests')} />
                     </div>
                 </div>
             </div>
@@ -425,6 +485,95 @@ export default function RepoDetailPage() {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* Pull Requests Tab (YENİ EKLENDİ) */}
+                {activeTab === 'pull-requests' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            {isLoadingPrs ? (
+                                <div className="text-center py-12 text-slate-500">Loading pull requests...</div>
+                            ) : prs.length === 0 ? (
+                                <div className="text-center py-12 flex flex-col items-center">
+                                    <GitPullRequest className="h-12 w-12 text-slate-300 mb-3" />
+                                    <p className="text-slate-500">No pull requests found.</p>
+                                    <button onClick={handleSync} className="mt-4 text-sm font-medium text-blue-600 hover:underline">
+                                        Sync with GitHub
+                                    </button>
+                                </div>
+                            ) : (
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50/50 text-xs font-medium uppercase text-slate-500">
+                                        <tr>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Pull Request</th>
+                                            <th className="px-6 py-4">Branch Flow</th>
+                                            <th className="px-6 py-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {prs.map((pr) => {
+                                            // PR durumunu belirle (merged API'den geliyorsa kullan, yoksa state'e bak)
+                                            const isMerged = pr.isMerged;
+                                            const isClosed = pr.state === 'closed';
+                                            const isOpen = pr.state === 'open';
+
+                                            return (
+                                                <tr key={pr.id} className="group hover:bg-slate-50/50">
+                                                    <td className="px-6 py-4 align-top">
+                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold
+                                                            ${isOpen ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                isMerged ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                                                    'bg-slate-100 text-slate-600 border-slate-200'
+                                                            }`}
+                                                        >
+                                                            <GitPullRequest className="h-3.5 w-3.5" />
+                                                            {isOpen ? 'Open' : isMerged ? 'Merged' : 'Closed'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="font-semibold text-slate-900 line-clamp-1" title={pr.title}>
+                                                                {pr.title}
+                                                            </span>
+                                                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                                <span className="font-mono">#{pr.number}</span>
+                                                                <span>•</span>
+                                                                <span>opened by <span className="font-medium text-slate-700">{pr.author}</span></span>
+                                                                <span>•</span>
+                                                                <span>{new Date(pr.createdAt).toLocaleDateString()}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2 text-xs font-mono">
+                                                            <span className="bg-slate-100 px-2 py-1 rounded text-slate-700 border border-slate-200">
+                                                                {pr.sourceBranch}
+                                                            </span>
+                                                            <ArrowRight className="h-3 w-3 text-slate-400" />
+                                                            <span className="bg-slate-100 px-2 py-1 rounded text-slate-700 border border-slate-200">
+                                                                {pr.targetBranch}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        {/* DÜZELTME: <a> etiketi kaldırıldı, sadece button bırakıldı */}
+                                                        <button
+                                                            onClick={() => navigate(`/repositories/${repo.id}/pull-requests/${pr.number}`, { state: { pr, repo } })}
+                                                            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                        >
+                                                            Details
+                                                            <ArrowRight className="h-3 w-3" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
                         </div>
                     </motion.div>
                 )}

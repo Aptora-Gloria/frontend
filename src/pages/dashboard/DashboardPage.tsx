@@ -1,4 +1,3 @@
-// src/pages/dashboard/DashboardPage.tsx
 import {
   useEffect,
   useMemo,
@@ -43,21 +42,21 @@ import { TabPill } from '@/shared/ui/tab';
 import { Avatar } from '@/shared/ui/avatar';
 import { LoadingSpinner } from '@/shared/ui/loading-spinner';
 
-/* ---------- TİP TANIMLAMALARI ---------- */
+/* ---------- TYPES ---------- */
 type ChartDataPoint = { date: string; displayDate: string; commits: number };
 type RecentCommit = { repo: string; author: string; msg: string; time: string; rawDate: number };
-type WeekRange = '7d' | '30d' | '90d'; // Aralığı biraz daha netleştirdim
+type WeekRange = '7d' | '30d' | '90d';
 type ContributorStats = { name: string; commits: number; percentage: number };
 
-/* ---------- CUSTOM STYLES ---------- */
+/* ---------- STYLES ---------- */
 const heatmapStyles = `
   .react-calendar-heatmap text { font-size: 10px; fill: #94a3b8; }
   .react-calendar-heatmap .color-empty { fill: #f1f5f9; }
   .react-calendar-heatmap .color-scale-1 { fill: #dbeafe; }
-  .react-calendar-heatmap .color-scale-2 { fill: #bfdbfe; }
-  .react-calendar-heatmap .color-scale-3 { fill: #60a5fa; }
-  .react-calendar-heatmap .color-scale-4 { fill: #2563eb; }
-  .react-calendar-heatmap rect:hover { stroke: #555; stroke-width: 1px; }
+  .react-calendar-heatmap .color-scale-2 { fill: #93c5fd; }
+  .react-calendar-heatmap .color-scale-3 { fill: #3b82f6; }
+  .react-calendar-heatmap .color-scale-4 { fill: #1d4ed8; }
+  .react-calendar-heatmap rect:hover { stroke: #cbd5e1; stroke-width: 1px; }
 `;
 
 /* ---------- UTILS ---------- */
@@ -78,39 +77,39 @@ function timeAgo(dateParam: string | number | Date) {
   return date.toLocaleDateString();
 }
 
+/* ---------- COMPONENTS ---------- */
+
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-slate-200 rounded ${className}`} />;
+  return <div className={`animate-pulse bg-slate-100 rounded ${className}`} />;
 }
 
-/* ---------- UI COMPONENTS ---------- */
-
 function KpiCard({ title, value, icon, color, trend, delay, fullValue }: { title: string; value: number | string; icon: ReactNode; color: string; trend?: number; delay: number, fullValue?: string }) {
-  const baseColor = color.split('-')[1];
   const isNumber = typeof value === 'number' || (typeof value === 'string' && !isNaN(Number(value)));
   const numValue = isNumber ? Number(value) : 0;
+  const iconColorClass = color.replace('bg-', 'text-').replace('50', '600');
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
-      className="group relative bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+      className="group relative bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300"
     >
       <div className="flex justify-between items-start">
         <div className="flex flex-col">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{title}</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{title}</span>
           <div className="flex items-baseline gap-2" title={fullValue}>
-            <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight cursor-default">
+            <h3 className="text-2xl font-bold text-slate-900 tracking-tight cursor-default">
               {isNumber ? <CountUp end={numValue} duration={2} separator="," /> : value}
             </h3>
             {trend !== undefined && (
-              <span className={`flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full ${trend >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              <span className={`flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${trend >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
                 {trend >= 0 ? '+' : ''}{trend}%
               </span>
             )}
           </div>
         </div>
-        <div className={`p-2.5 rounded-xl ${color} bg-opacity-60 text-${baseColor}-600 shadow-sm group-hover:scale-110 transition-transform duration-300`}>
+        <div className={`p-2.5 rounded-lg ${color} ${iconColorClass}`}>
           {icon}
         </div>
       </div>
@@ -122,7 +121,7 @@ const CustomTooltip = (props: any) => {
   const { active, payload, label } = props;
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white text-slate-700 text-xs p-3 rounded-lg shadow-xl ring-1 ring-slate-100 border border-slate-100">
+      <div className="bg-white text-slate-700 text-xs p-3 rounded-lg shadow-xl ring-1 ring-slate-100 border border-slate-100 z-50">
         <p className="font-bold mb-2 text-slate-900 border-b border-slate-100 pb-1">{label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2 py-0.5">
@@ -139,26 +138,26 @@ const CustomTooltip = (props: any) => {
 
 function ContributorRow({ contributor, rank }: { contributor: ContributorStats; rank: number }) {
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
-      <div className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full shadow-sm ${rank === 0 ? 'bg-yellow-100 text-yellow-700 ring-2 ring-yellow-50' :
-          rank === 1 ? 'bg-slate-200 text-slate-700 ring-2 ring-slate-100' :
-            rank === 2 ? 'bg-orange-100 text-orange-800 ring-2 ring-orange-50' :
-              'bg-slate-50 text-slate-400'
+    <div className="flex items-center gap-3 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 rounded-lg px-2 transition-colors group">
+      <div className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded-md ${rank === 0 ? 'bg-amber-100 text-amber-700' :
+        rank === 1 ? 'bg-slate-200 text-slate-600' :
+          rank === 2 ? 'bg-orange-100 text-orange-700' :
+            'bg-slate-100 text-slate-400'
         }`}>
         {rank + 1}
       </div>
       <Avatar name={contributor.name} size="sm" />
       <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-sm font-semibold text-slate-700 truncate">{contributor.name}</span>
-          <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{contributor.commits} commits</span>
+        <div className="flex justify-between items-center mb-1.5">
+          <span className="text-sm font-medium text-slate-700 truncate">{contributor.name}</span>
+          <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full border border-slate-200">{contributor.commits} commits</span>
         </div>
-        <div className="w-full bg-slate-100 rounded-full h-1.5">
+        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${contributor.percentage}%` }}
             transition={{ duration: 1, delay: 0.2 }}
-            className="bg-blue-500 h-1.5 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+            className="bg-blue-500 h-1.5 rounded-full"
           />
         </div>
       </div>
@@ -168,17 +167,17 @@ function ContributorRow({ contributor, rank }: { contributor: ContributorStats; 
 
 function TopRepoList({ repos }: { repos: { name: string; stars: number }[] }) {
   return (
-    <div className="flex flex-col gap-2 h-full">
+    <div className="flex flex-col gap-1 h-full pr-2">
       {repos.map((repo, i) => (
-        <div key={repo.name} className="flex items-center justify-between group p-2.5 rounded-lg hover:bg-slate-50 transition-all border border-transparent hover:border-slate-200 cursor-default">
+        <div key={repo.name} className="flex items-center justify-between group p-3 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all cursor-default">
           <div className="flex items-center gap-3 min-w-0">
             <span className={`text-xs font-bold w-4 text-center ${i < 3 ? 'text-blue-600' : 'text-slate-400'}`}>#{i + 1}</span>
-            <span className="text-sm font-semibold text-slate-700 truncate" title={repo.name}>
+            <span className="text-sm font-medium text-slate-700 truncate" title={repo.name}>
               {repo.name}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 border border-amber-100 text-amber-700">
-            <Award size={12} className="text-amber-500 fill-amber-500" />
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-600 shadow-sm">
+            <Award size={12} className="text-amber-500" />
             <span className="text-xs font-bold">{repo.stars}</span>
           </div>
         </div>
@@ -194,13 +193,13 @@ function TopRepoList({ repos }: { repos: { name: string; stars: number }[] }) {
 
 function CommitTimeline({ commits }: { commits: RecentCommit[] }) {
   return (
-    <div className="relative pl-5 border-l border-slate-200 space-y-6 h-full py-1 ml-2">
+    <div className="relative pl-4 space-y-6 h-full py-2 ml-2 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
       {commits.map((c, i) => (
-        <div key={i} className="relative group">
-          <div className="absolute -left-[25px] top-1.5 w-3.5 h-3.5 rounded-full bg-white border-2 border-slate-300 group-hover:border-blue-500 group-hover:scale-125 transition-all z-10 shadow-sm"></div>
+        <div key={i} className="relative group pl-6">
+          <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full bg-white border-2 border-slate-300 group-hover:border-blue-500 transition-colors z-10"></div>
           <div className="flex flex-col gap-1">
             <div className="flex justify-between items-start gap-2">
-              <span className="text-sm font-semibold text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors cursor-pointer" title={c.msg}>
+              <span className="text-sm font-medium text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors cursor-pointer" title={c.msg}>
                 {c.msg}
               </span>
               <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
@@ -208,8 +207,8 @@ function CommitTimeline({ commits }: { commits: RecentCommit[] }) {
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs mt-0.5">
-              <span className="font-medium text-slate-600 flex items-center gap-1.5 bg-slate-100 pr-2 pl-1 py-0.5 rounded-full">
-                <Avatar name={c.author} size="sm" className="w-4 h-4 text-[8px]" />
+              <span className="font-medium text-slate-600 flex items-center gap-1.5 bg-slate-50 pr-2 pl-1 py-0.5 rounded-full border border-slate-100">
+                <Avatar name={c.author} size="sm" className="w-3.5 h-3.5 text-[8px]" />
                 {c.author}
               </span>
               <span className="text-slate-300">•</span>
@@ -223,7 +222,7 @@ function CommitTimeline({ commits }: { commits: RecentCommit[] }) {
 }
 
 /* ---------- LOGIC ---------- */
-const DEFAULT_RECENT_COMMITS: RecentCommit[] = [{ repo: '-', author: '-', msg: 'No data', time: '', rawDate: 0 }];
+const DEFAULT_RECENT_COMMITS: RecentCommit[] = [];
 const ORG_ALL = '__all_repos';
 
 function mapCommit(c: Commit, repo: string): RecentCommit {
@@ -247,38 +246,31 @@ function getOrgLabel(repo: Repo): string {
   return org === 'no-org' ? 'User repos' : org;
 }
 
-// --- DÜZELTİLEN FONKSİYON: GERÇEK TARİH OLUŞTURUCU ---
 function buildChartData(commits: Commit[], range: WeekRange): ChartDataPoint[] {
-  // 1. Gün sayısını belirle (Varsayılan 30)
   const daysToLookBack = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-
-  // 2. Son X gün için boş bir dizi oluştur
   const data: ChartDataPoint[] = [];
   const today = new Date();
+
+  const commitCountsByDate = new Map<string, number>();
+
+  commits.forEach(c => {
+    if (!c.committedAt) return;
+    const dateKey = new Date(c.committedAt).toISOString().split('T')[0];
+    commitCountsByDate.set(dateKey, (commitCountsByDate.get(dateKey) || 0) + 1);
+  });
 
   for (let i = daysToLookBack - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(today.getDate() - i);
-
-    // YYYY-MM-DD formatı (Eşleştirme için)
     const dateKey = d.toISOString().split('T')[0];
-
-    // Görünen Format (Dec 12)
     const displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-    // Bu güne ait commitleri say
-    const count = commits.filter(c => {
-      if (!c.committedAt) return false;
-      return c.committedAt.startsWith(dateKey);
-    }).length;
 
     data.push({
       date: dateKey,
-      displayDate, // Grafikte bu görünecek
-      commits: count
+      displayDate,
+      commits: commitCountsByDate.get(dateKey) || 0
     });
   }
-
   return data;
 }
 
@@ -290,7 +282,7 @@ function getTopContributors(commits: Commit[]): ContributorStats[] {
   });
   const total = commits.length;
   return [...map.entries()]
-    .map(([name, commits]) => ({ name, commits, percentage: Math.round((commits / total) * 100) }))
+    .map(([name, commits]) => ({ name, commits, percentage: total > 0 ? Math.round((commits / total) * 100) : 0 }))
     .sort((a, b) => b.commits - a.commits)
     .slice(0, 5);
 }
@@ -330,7 +322,7 @@ export default function DashboardPage() {
   const [loadingCommits, setLoadingCommits] = useState(false);
   const [weekRange, setWeekRange] = useState<WeekRange>('30d');
 
-  // 1. Repoları Getir
+  // 1. REPO LOAD
   useEffect(() => {
     const run = async () => {
       if (!user) return;
@@ -345,7 +337,7 @@ export default function DashboardPage() {
     run();
   }, [user]);
 
-  // Org Gruplama
+  // ORG GROUPING
   const grouped = useMemo(() => {
     const map = new Map<string, Repo[]>();
     repos.forEach((r) => {
@@ -360,64 +352,108 @@ export default function DashboardPage() {
   const selectedRepo = useMemo(() => repos.find((r) => r.id === selectedRepoId) ?? null, [repos, selectedRepoId]);
   const isOrgAggregated = selectedOrg !== 'all' && selectedRepoId === ORG_ALL;
 
-  // 2. Commitleri Getir
-  useEffect(() => {
-    const run = async () => {
-      if (!repos.length) return;
-      let target: Repo[] = [];
+  // --- DATA FETCHING (MERKEZİ FONKSİYON) ---
+  const fetchData = async (forceSync = false) => {
+    if (!repos.length) return;
+
+    // Hedef repoları belirle
+    let target: Repo[] = [];
+    if (selectedOrg === 'all') {
+      if (!selectedRepoId) target = repos;
+      else target = selectedRepo ? [selectedRepo] : repos;
+    } else {
       if (isOrgAggregated) target = repos.filter((r) => getOrgLabel(r) === selectedOrg);
       else if (selectedRepo) target = [selectedRepo];
-      else return;
+    }
 
-      try {
-        setLoadingCommits(true);
-        const all: Commit[] = [];
-        const recentsRaw: RecentCommit[] = [];
+    if (target.length === 0) return;
 
-        for (const r of target) {
-          const fullName = r.fullName;
+    try {
+      setLoadingCommits(true);
+      const uniqueCommitsMap = new Map<string, Commit>();
+      const recentsRaw: RecentCommit[] = [];
+
+      // Her repoyu paralel işle
+      await Promise.all(target.map(async (r) => {
+        const fullName = r.fullName;
+        try {
+          // 1. Branchleri çek
           let branches = await getBranchesByRepo(fullName).catch(() => []);
           if (!branches.length) branches = await initBranchesByRepo(fullName).catch(() => []);
-          const branchNames = branches.map((b) => b.name);
-          const repoAllCommits: Commit[] = [];
-          for (const br of branchNames) {
-            let cList = await queryCommits(fullName, br).catch(() => []);
-            if (!cList.length) { await initCommits(fullName, br); cList = await queryCommits(fullName, br).catch(() => []); }
-            repoAllCommits.push(...cList);
-          }
-          all.push(...repoAllCommits);
-          recentsRaw.push(...repoAllCommits.map((c) => mapCommit(c, fullName)));
+
+          // 2. Her branch için commitleri çek
+          const branchPromises = branches.map(async (br) => {
+            try {
+              // Eğer "forceSync" ise önce init et (GitHub'dan çek), yoksa direkt DB'den oku
+              if (forceSync) {
+                await initCommits(fullName, br.name);
+              }
+
+              let cList = await queryCommits(fullName, br.name);
+
+              // Eğer DB boşsa ve forceSync değilse bile mecbur init et
+              if (!cList.length && !forceSync) {
+                await initCommits(fullName, br.name);
+                cList = await queryCommits(fullName, br.name);
+              }
+              return cList;
+            } catch (e) {
+              return []; // Silinmiş branch hatasını yut
+            }
+          });
+
+          const results = await Promise.all(branchPromises);
+
+          // 3. Birleştir ve Dedup (SHA kontrolü)
+          results.flat().forEach(c => {
+            if (c.sha && !uniqueCommitsMap.has(c.sha)) {
+              uniqueCommitsMap.set(c.sha, c);
+              recentsRaw.push(mapCommit(c, fullName));
+            }
+          });
+
+        } catch (e) {
+          console.warn(`Error fetching for ${fullName}`, e);
         }
+      }));
 
-        setCommits(all);
-        recentsRaw.sort((a, b) => b.rawDate - a.rawDate);
-        setRecent(recentsRaw.slice(0, 20));
+      setCommits(Array.from(uniqueCommitsMap.values()));
+      recentsRaw.sort((a, b) => b.rawDate - a.rawDate);
+      setRecent(recentsRaw.slice(0, 20));
 
-      } finally { setLoadingCommits(false); }
-    };
-    run();
+    } finally { setLoadingCommits(false); }
+  };
+
+  // 2. COMMIT FETCH (İlk yükleme - Cache'den hızlı açılış)
+  useEffect(() => {
+    fetchData(false); // forceSync = false
   }, [repos, selectedOrg, selectedRepoId]);
+
+  // 3. HANDLERS
+  const handleRefresh = () => {
+    fetchData(true); // forceSync = true (GitHub'dan taze veri çek)
+  };
 
   // Derived Stats
   const total = commits.length;
   const contrib = new Set(commits.map((c) => c.authorLogin || c.authorName).filter(Boolean)).size;
   const avg = contrib ? (total / contrib).toFixed(1) : '0';
-  const mostActive = isOrgAggregated ? `${selectedOrg}` : selectedRepo?.fullName ?? '-';
+  const mostActive = isOrgAggregated ? `${selectedOrg}` : selectedRepo?.fullName ?? 'All Repos';
 
-  // --- CHART DATA (Düzeltildi) ---
+  // Chart Data
   const chartData = useMemo(() => buildChartData(commits, weekRange), [commits, weekRange]);
-
   const topStars = useMemo(() => [...repos].sort((a, b) => (b.stargazers ?? 0) - (a.stargazers ?? 0)).slice(0, 5).map((r) => ({ name: r.fullName || r.name, stars: r.stargazers ?? 0 })), [repos]);
   const topContributors = useMemo(() => getTopContributors(commits), [commits]);
   const commitsByDay = useMemo(() => getCommitsByDay(commits), [commits]);
   const heatmapData = useMemo(() => getHeatmapData(commits), [commits]);
 
-  // Trend Hesabı
+  // Trend
   const currentPeriodCommits = useMemo(() => {
     const days = weekRange === '30d' ? 30 : weekRange === '90d' ? 90 : 7;
     const cutoff = Date.now() - days * 86400000;
     return commits.filter((c) => c.committedAt && new Date(c.committedAt).getTime() >= cutoff).length;
   }, [commits, weekRange]);
+
   const previousPeriodCommits = useMemo(() => {
     const days = weekRange === '30d' ? 30 : weekRange === '90d' ? 90 : 7;
     const cutoff = Date.now() - days * 86400000;
@@ -428,29 +464,27 @@ export default function DashboardPage() {
       return t >= previousCutoff && t < cutoff;
     }).length;
   }, [commits, weekRange]);
+
   const trend = previousPeriodCommits > 0 ? Math.round(((currentPeriodCommits - previousPeriodCommits) / previousPeriodCommits) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-[#F8F9FC] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] p-6 lg:p-8 font-sans text-slate-900">
+    <div className="min-h-screen bg-[#FAFBFC] p-6 lg:p-8 font-sans text-slate-900">
       <style>{heatmapStyles}</style>
 
       {/* HEADER */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4"
-      >
+      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-600/20">
-            <GitBranch className="text-white" size={22} />
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm">
+            <GitBranch className="text-blue-600" size={22} />
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">Git Analytics</h1>
-            <p className="text-xs font-medium text-slate-500">Real-time repository insights</p>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Overview</h1>
+            <p className="text-xs font-medium text-slate-500">Global activity dashboard</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2">
+          <div className="bg-white p-1 rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
             <Dropdown
               label="Org"
               items={[{ label: 'All', value: 'all' }, ...orgOptions]}
@@ -473,31 +507,36 @@ export default function DashboardPage() {
             />
           </div>
 
-          <button onClick={() => window.location.reload()} className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:scale-105 active:scale-95 transition-all shadow-sm">
-            {(loadingRepos || loadingCommits) ? <LoadingSpinner size="sm" /> : <RefreshCw size={18} className="text-slate-600" />}
+          {/* YENİLEME BUTONU GÜNCELLENDİ: handleRefresh çağırıyor */}
+          <button
+            onClick={handleRefresh}
+            className="p-2.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all shadow-sm group active:scale-95"
+            title="Sync Data from GitHub"
+          >
+            {(loadingRepos || loadingCommits) ? <LoadingSpinner size="sm" /> : <RefreshCw size={18} className="text-slate-500 group-hover:text-blue-600" />}
           </button>
         </div>
-      </motion.div>
+      </div>
 
-      {/* 1. KPI GRID */}
+      {/* 1. KPI CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         {loadingRepos ? (
           <>
-            <Skeleton className="h-[120px] w-full" />
-            <Skeleton className="h-[120px] w-full" />
-            <Skeleton className="h-[120px] w-full" />
-            <Skeleton className="h-[120px] w-full" />
+            <Skeleton className="h-[100px] w-full" />
+            <Skeleton className="h-[100px] w-full" />
+            <Skeleton className="h-[100px] w-full" />
+            <Skeleton className="h-[100px] w-full" />
           </>
         ) : (
           <>
-            <KpiCard title="Total Commits" value={total} icon={<Activity size={24} />} color="bg-blue-50" trend={trend} delay={0.1} />
-            <KpiCard title="Contributors" value={contrib} icon={<Users size={24} />} color="bg-purple-50" delay={0.2} />
-            <KpiCard title="Avg / Dev" value={avg} icon={<GitBranch size={24} />} color="bg-green-50" delay={0.3} />
+            <KpiCard title="Total Commits" value={total} icon={<Activity size={20} />} color="bg-blue-50" trend={trend} delay={0.1} />
+            <KpiCard title="Contributors" value={contrib} icon={<Users size={20} />} color="bg-purple-50" delay={0.2} />
+            <KpiCard title="Commits / Dev" value={avg} icon={<GitBranch size={20} />} color="bg-emerald-50" delay={0.3} />
             <KpiCard
-              title="Active Repo"
+              title="Active Scope"
               value={mostActive.length > 15 ? mostActive.substring(0, 15) + '...' : mostActive}
               fullValue={mostActive}
-              icon={<Flame size={24} />}
+              icon={<Flame size={20} />}
               color="bg-orange-50"
               delay={0.4}
             />
@@ -505,14 +544,14 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* 2. MAIN CHARTS (ORTA - TARİHLER DÜZELTİLDİ) */}
+      {/* 2. CHARTS ROW */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-          className="xl:col-span-2 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm"
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+          className="xl:col-span-2 bg-white rounded-xl p-6 border border-slate-200 shadow-sm"
         >
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">Commits Trend</h3>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">Commit Activity</h3>
             <div className="scale-90 origin-right">
               <TabPill label="7d" active={weekRange === '7d'} onClick={() => setWeekRange('7d')} />
               <TabPill label="30d" active={weekRange === '30d'} onClick={() => setWeekRange('30d')} />
@@ -525,16 +564,15 @@ export default function DashboardPage() {
                 <AreaChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorCommits" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  {/* Düzeltme: displayDate (Dec 12) kullanılıyor */}
                   <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} dy={10} minTickGap={30} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="commits" name="Commits" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorCommits)" />
+                  <Area type="monotone" dataKey="commits" name="Commits" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorCommits)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -542,10 +580,10 @@ export default function DashboardPage() {
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-          className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm"
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+          className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm"
         >
-          <h3 className="text-sm font-bold text-slate-700 mb-6">Weekly Rhythm</h3>
+          <h3 className="text-sm font-bold text-slate-800 mb-6">Weekly Rhythm</h3>
           <div className="h-64 w-full">
             {loadingCommits ? <Skeleton className="w-full h-full" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -554,7 +592,7 @@ export default function DashboardPage() {
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
                   <Tooltip cursor={{ fill: '#f8fafc' }} content={<CustomTooltip />} />
-                  <Bar dataKey="commits" name="Commits" fill="#10b981" radius={[4, 4, 0, 0]} barSize={28} />
+                  <Bar dataKey="commits" name="Commits" fill="#10b981" radius={[4, 4, 0, 0]} barSize={24} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -562,14 +600,14 @@ export default function DashboardPage() {
         </motion.div>
       </div>
 
-      {/* 3. HEATMAP SECTION */}
+      {/* 3. HEATMAP */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
-        className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-8"
+        initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
+        className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm mb-8"
       >
         <div className="flex items-center gap-2 mb-4">
           <CalendarIcon size={18} className="text-slate-400" />
-          <h3 className="text-sm font-bold text-slate-700">Contribution Calendar</h3>
+          <h3 className="text-sm font-bold text-slate-800">Contribution Calendar</h3>
         </div>
         <div className="w-full overflow-x-auto pb-2">
           <div className="min-w-[800px]">
@@ -591,27 +629,21 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* 4. BOTTOM ROW */}
+      {/* 4. LISTS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]"
-        >
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]">
           <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
             <Award size={16} className="text-amber-500" />
             Top Repositories
           </h3>
           <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
-            {loadingRepos ? <div className="space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div> :
+            {loadingRepos ? <div className="space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div> :
               <TopRepoList repos={topStars} />}
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-          className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]"
-        >
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]">
           <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
             <Users size={16} className="text-purple-500" />
             Top Contributors
@@ -624,16 +656,13 @@ export default function DashboardPage() {
                 ))
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
-                  No contributors yet
+                  No contributors found
                 </div>
               )}
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}
-          className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]"
-        >
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <GitCommit size={16} className="text-blue-500" />
@@ -654,7 +683,7 @@ export default function DashboardPage() {
                 </div>
               )}
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

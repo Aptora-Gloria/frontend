@@ -13,6 +13,6 @@ export const getUserRepos = async (): Promise<Repo[]> => {
 
 // İlk senkronizasyon (db boşsa) – sonra tekrar getUserRepos çağrılmalı
 export const initUserRepos = async (): Promise<Repo[]> => {
-    const response = await apiClient.post<RepoDto[]>('/api/github/repos/init', {});
+    const response = await apiClient.post<RepoDto[]>('/api/github/repos/init/user', {});
     return response.data.map(mapRepoDtoToEntity);
 };
