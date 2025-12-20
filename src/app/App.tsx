@@ -13,8 +13,7 @@ import {
 
 import { ProtectedRoute } from '@/shared/components';
 import AppLayout from './AppLayout';
-import PrDetailPage from '@/pages/pull-request/PrdetailPage';
-
+import PrDetailPage from '@/pages/pull-request/PrDetailPage'; 
 export default function App() {
   return (
     <Routes>

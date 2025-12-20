@@ -1,64 +1,57 @@
 // src/shared/lib/dto/pr-dto.ts
 
-// 1. Liste Sorgusu (/query)
 export interface PullRequestDto {
     id: number;
-    number: number;
+    githubPrId: number;
+    prNumber: number;
+    repoFullName: string;
+    dataLevel: 'BASIC' | 'FULL';
+    state: 'open' | 'closed';
+    draft: boolean;
     title: string;
     body: string | null;
-    state: string;
-    merged: boolean;
-    html_url: string;
-    user: { id: number; login: string };
-    head: { ref: string; sha: string };
-    base: { ref: string; sha: string };
-    created_at: string;
-    updated_at: string;
-    closed_at: string | null;
-    merged_at: string | null;
-}
-
-// 2. Metrik Detayları (/sync-metrics)
-
-export interface PrCommitDto {
-    sha: string;
-    commit: {
-        message: string;
-        author: { name: string; date: string };
+    authorLogin: string;
+    authorGithubId: number;
+    htmlUrl: string;
+    mergeCommitSha: string | null;
+    changeStats: {
+        additions: number;
+        deletions: number;
+        changedFiles: number;
+        available: boolean;
+        syncedAt: string;
     };
-    author: { login: string } | null;
-    html_url: string;
+    createdAt: string;
+    updatedAt: string;
+    closedAt: string | null;
+    mergedAt: string | null;
+    lastSyncedAt: string;
 }
 
 export interface PrReviewDto {
     id: number;
-    state: string;
-    body: string;
-    submitted_at: string;
-    user: { login: string };
+    githubReviewId: number;
+    pullRequestId: number;
+    reviewer: { login: string; githubId: number };
+    state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED';
+    body: string | null;
+    submittedAt: string;
+    htmlUrl: string;
 }
 
-export interface PrCommentDto {
+export interface PrCommitDto {
     id: number;
-    body: string;
-    created_at: string;
-    user: { login: string };
+    githubRepoId: number;
+    sha: string;
+    pullRequestId: number;
+    message: string;
+    author: { login: string; name: string; email: string };
+    committedAt: string;
+    htmlUrl: string;
 }
 
-export interface PrMetricItemDto {
-    prNumber: number;
-    prTitle: string;
-    prState: string;
-    commitCount: number;
-    reviewCount: number;
-    commentCount: number;
-    commits: PrCommitDto[];
-    reviews: PrReviewDto[];
-    comments: PrCommentDto[];
-}
-
-export interface PrMetricsResponseDto {
-    repositoryFullName: string;
-    totalPullRequests: number;
-    pullRequests: PrMetricItemDto[];
+export interface SyncStatusDto {
+    repoFullName: string;
+    overallStatus: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+    // Diğer alanlar opsiyonel
 }

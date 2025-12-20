@@ -220,8 +220,7 @@ export const AuthCallbackPage = () => {
           </div>
 
           <h1 className="text-2xl font-bold mb-3 text-slate-900">Authentication Error</h1>
-          <p className="text-slate-500 mb-8 whitespace-pre-wrap text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
-            {error}
+          <p className="text-slate-500 mb-8 whitespace-pre-wrap text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">{errorParam}
           </p>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">

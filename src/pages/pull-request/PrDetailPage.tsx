@@ -10,13 +10,16 @@ import {
 } from 'lucide-react';
 
 import { Avatar } from '@/shared/ui';
+// Entity importları
 import type { PullRequest, PrMetric } from '@/entities/pull-request';
 import type { Repo } from '@/entities/repo';
+// API importları
 import { getPrMetrics, getPrBasicInfo } from '@/shared/lib/pr-api';
 import { getUserRepos } from '@/shared/lib/repo-api';
 import { useToast } from '@/shared/contexts/ToastContext';
 import { ErrorState } from '@/shared/ui/error-state';
 import type { AppError } from '@/shared/errors';
+import { initPullRequests } from '@/shared/lib/pr-api';
 
 /* --- UI HELPER COMPONENTS --- */
 
@@ -43,8 +46,8 @@ const TabButton = ({ active, label, count, onClick, icon: Icon }: any) => (
     <button
         onClick={onClick}
         className={`relative flex items-center gap-2 px-1 py-4 text-sm font-medium transition-colors border-b-2 ${active
-                ? 'border-orange-500 text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            ? 'border-orange-500 text-slate-900'
+            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
             }`}
     >
         {Icon && <Icon size={16} className={active ? 'text-slate-900' : 'text-slate-400'} />}
@@ -63,7 +66,6 @@ const StatusBadge = ({ state, merged }: { state: string, merged?: boolean }) => 
     const isClosed = state === 'closed' && !isMerged;
     const isOpen = state === 'open';
 
-    // Daha soft renkler
     let config = { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', icon: AlertCircle, label: state };
 
     if (isOpen) {
@@ -82,7 +84,6 @@ const StatusBadge = ({ state, merged }: { state: string, merged?: boolean }) => 
     );
 };
 
-// Daha minimalist ve temiz Stat Kartları
 const StatCard = ({ label, value, icon: Icon, colorClass }: any) => (
     <div className="flex flex-col justify-between p-5 bg-white border border-slate-200 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] hover:border-slate-300 transition-all group">
         <div className="flex items-center justify-between mb-2">
@@ -108,7 +109,7 @@ export default function PrDetailPage() {
     const statePr = (location.state as any)?.pr as PullRequest | undefined;
     const stateRepo = (location.state as any)?.repo as Repo | undefined;
 
-    const { showError, showSuccess } = useToast();
+    const { showError } = useToast();
 
     const [prBasic, setPrBasic] = useState<PullRequest | null>(statePr || null);
     const [prMetrics, setPrMetrics] = useState<PrMetric | null>(null);
@@ -138,10 +139,12 @@ export default function PrDetailPage() {
                 }
 
                 if (!prBasic) {
+                    // API artık number kabul ediyor
                     const basicData = await getPrBasicInfo(currentFullName!, Number(prNumber));
                     if (basicData) setPrBasic(basicData);
                 }
 
+                // API artık number kabul ediyor
                 const metricsData = await getPrMetrics(currentFullName!, Number(prNumber));
                 if (metricsData) setPrMetrics(metricsData);
 
@@ -160,11 +163,12 @@ export default function PrDetailPage() {
     const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
     const formatDateTime = (d?: string | null) => d ? new Date(d).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
-    // Timeline Builder (Sorted by date)
+    // Timeline Builder
     const timelineItems = useMemo(() => {
         if (!prMetrics) return [];
+        // DÜZELTME: r.submitted_at yerine r.date kullanıyoruz
         const comments = (prMetrics.comments || []).map(c => ({ ...c, type: 'comment', dateObj: new Date(c.created_at) }));
-        const reviews = (prMetrics.reviews || []).map(r => ({ ...r, type: 'review', dateObj: new Date(r.submitted_at) }));
+        const reviews = (prMetrics.reviews || []).map(r => ({ ...r, type: 'review', dateObj: new Date(r.date) }));
         return [...comments, ...reviews].sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
     }, [prMetrics]);
 
@@ -174,6 +178,7 @@ export default function PrDetailPage() {
     const commitCount = prMetrics?.commitCount ?? 0;
     const reviewCount = prMetrics?.reviewCount ?? 0;
     const commentCount = prMetrics?.commentCount ?? 0;
+    // ARTIK BU ALANLAR ENTITY'DE VAR (Flattened)
     const additions = prBasic.additions ?? 0;
     const deletions = prBasic.deletions ?? 0;
     const changedFiles = prBasic.changedFiles ?? 0;
@@ -183,6 +188,8 @@ export default function PrDetailPage() {
 
     return (
         <div className="min-h-screen bg-[#F9FAFB] pb-20 font-sans text-slate-900">
+            {/* Header ve Diğer UI kodların AYNEN DURUYOR... */}
+            {/* ... (Senin attığın kodun geri kalanı buraya gelecek, değişiklik yok) ... */}
 
             {/* --- HEADER --- */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
@@ -219,7 +226,6 @@ export default function PrDetailPage() {
                         </div>
                     </div>
 
-                    {/* Modern Branch Flow Bar */}
                     <div className="mb-2 p-1 bg-slate-100/50 rounded-lg border border-slate-200 inline-flex flex-wrap items-center gap-2 text-xs font-mono">
                         <div className="flex items-center gap-2 bg-blue-50/50 px-2 py-1 rounded border border-blue-100 text-blue-700">
                             <GitBranch size={12} className="opacity-70" />
@@ -248,7 +254,6 @@ export default function PrDetailPage() {
                         )}
                     </div>
 
-                    {/* Navigation Tabs */}
                     <div className="flex gap-6 mt-4">
                         <TabButton active={activeTab === 'overview'} label="Overview" onClick={() => setActiveTab('overview')} />
                         <TabButton active={activeTab === 'commits'} label="Commits" count={commitCount} onClick={() => setActiveTab('commits')} />
@@ -257,16 +262,10 @@ export default function PrDetailPage() {
                 </div>
             </div>
 
-            {/* --- CONTENT AREA --- */}
             <main className="mx-auto max-w-7xl px-6 py-8">
-
                 {activeTab === 'overview' && (
                     <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-                        {/* LEFT COLUMN */}
                         <div className="lg:col-span-2 space-y-8">
-
-                            {/* Description Box */}
                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                 <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
@@ -275,16 +274,12 @@ export default function PrDetailPage() {
                                     </div>
                                 </div>
                                 <div className="p-5 prose prose-slate prose-sm max-w-none text-slate-600 leading-relaxed whitespace-pre-wrap">
-                                    {/* Eğer body varsa onu göster, yoksa italik mesaj göster */}
                                     {prBasic.body ? prBasic.body : <span className="italic text-slate-400">No description provided.</span>}
                                 </div>
                             </div>
 
-                            {/* Timeline Activity */}
                             <div className="relative">
-                                {/* Vertical Line */}
                                 <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-slate-200 -z-10" />
-
                                 <div className="space-y-8">
                                     {timelineItems.length === 0 ? (
                                         <div className="ml-12 p-8 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center">
@@ -306,7 +301,6 @@ export default function PrDetailPage() {
                                                             </div>
                                                         )}
                                                     </div>
-
                                                     <div className="flex-1 min-w-0">
                                                         <div className={`bg-white border rounded-xl shadow-sm overflow-hidden ${isReview ? 'border-slate-200' : 'border-slate-200'}`}>
                                                             <div className="bg-slate-50/50 px-4 py-2.5 border-b border-slate-100 flex justify-between items-center">
@@ -337,9 +331,7 @@ export default function PrDetailPage() {
                             </div>
                         </div>
 
-                        {/* RIGHT COLUMN: SIDEBAR */}
                         <div className="space-y-6">
-                            {/* Summary Metrics */}
                             <div className="grid grid-cols-1 gap-3">
                                 <StatCard label="Commits" value={commitCount} icon={GitCommitHorizontal} colorClass="text-blue-600" />
                                 <StatCard label="Reviews" value={reviewCount} icon={CheckCircle2} colorClass="text-purple-600" />
@@ -376,7 +368,6 @@ export default function PrDetailPage() {
                     </motion.div>
                 )}
 
-                {/* 2. COMMITS TAB */}
                 {activeTab === 'commits' && (
                     <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -417,7 +408,6 @@ export default function PrDetailPage() {
                     </motion.div>
                 )}
 
-                {/* 3. REVIEWS TAB */}
                 {activeTab === 'reviews' && (
                     <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
                         {reviewsList.length > 0 ? (

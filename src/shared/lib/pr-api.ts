@@ -1,69 +1,78 @@
 // src/shared/lib/pr-api.ts
+
 import apiClient from './api-client';
-import type { PullRequestDto, PrMetricsResponseDto } from '@/shared/lib/dto/pr-dto';
-import {
-    mapPrDtoToEntity,
-    mapPrMetricToEntity,
-    type PullRequest,
-    type PrMetric
-} from '@/entities/pull-request';
+import type { PullRequestDto, PrReviewDto, PrCommitDto, SyncStatusDto } from './dto/pr-dto';
+import { mapPrDtoToEntity, mapReviewDtoToEntity, mapCommitDtoToEntity } from '../../entities/pull-request';
+import type { PullRequest, PrReview, PrCommit, PrMetric } from '../../entities/pull-request';
 
-// 1. Liste Çekme
-export const queryPullRequests = async (fullName: string, state: string = ''): Promise<PullRequest[]> => {
-    const params = new URLSearchParams();
-    params.append('fullName', fullName);
-    if (state) params.append('state', state);
+// --- Internal Fetchers ---
 
-    try {
-        const response = await apiClient.get<PullRequestDto[]>(`/api/github/pull-requests/query?${params.toString()}`);
-        return response.data.map(mapPrDtoToEntity);
-    } catch (error) {
-        console.error("Failed to query pull requests:", error);
-        throw error; // Re-throw to let caller handle
-    }
+const fetchPrDetailInternal = async (repoFullName: string, prNumber: number): Promise<PullRequest> => {
+    const response = await apiClient.post<PullRequestDto>('/api/github/pull-requests/query/single', {
+        repoFullName,
+        prNumber
+    });
+    return mapPrDtoToEntity(response.data);
 };
 
-// 2. Init
-export const initPullRequests = async (fullName: string, state: string = 'all'): Promise<PullRequest[]> => {
-    const params = new URLSearchParams();
-    params.append('fullName', fullName);
-    params.append('state', state);
-    const response = await apiClient.post<PullRequestDto[]>(`/api/github/pull-requests/init?${params.toString()}`, {});
+const fetchPrReviewsInternal = async (repoFullName: string, prNumber: number): Promise<PrReview[]> => {
+    const response = await apiClient.post<PrReviewDto[]>('/api/github/pull-requests/reviews', {
+        repoFullName,
+        prNumber
+    });
+    return response.data.map(mapReviewDtoToEntity);
+};
+
+const fetchPrCommitsInternal = async (repoFullName: string, prNumber: number): Promise<PrCommit[]> => {
+    const response = await apiClient.post<PrCommitDto[]>('/api/github/pull-requests/commits', {
+        repoFullName,
+        prNumber
+    });
+    return response.data.map(mapCommitDtoToEntity);
+};
+
+// --- EXPORTS ---
+
+export const getPrBasicInfo = async (repoFullName: string, prNumber: number): Promise<PullRequest> => {
+    return fetchPrDetailInternal(repoFullName, prNumber);
+};
+
+export const getPrMetrics = async (repoFullName: string, prNumber: number): Promise<PrMetric> => {
+    // Hepsini paralel çekiyoruz
+    const [pr, reviews, commits] = await Promise.all([
+        fetchPrDetailInternal(repoFullName, prNumber),
+        fetchPrReviewsInternal(repoFullName, prNumber),
+        fetchPrCommitsInternal(repoFullName, prNumber)
+    ]);
+
+    return {
+        ...pr,
+        commitCount: commits.length,
+        reviewCount: reviews.length,
+        commentCount: 0,
+        commits: commits,
+        reviews: reviews,
+        comments: []
+    };
+};
+
+// Sync fonksiyonları
+export const startPrSync = async (repoFullName: string): Promise<void> => {
+    await apiClient.post('/api/github/pull-requests/sync/initiate', { repoFullName });
+};
+
+export const getSyncStatus = async (repoFullName: string): Promise<SyncStatusDto> => {
+    const response = await apiClient.post<SyncStatusDto>('/api/github/pull-requests/sync/status', { repoFullName });
+    return response.data;
+};
+
+export const queryPullRequests = async (repoFullName: string): Promise<PullRequest[]> => {
+    // Listeyi çeken endpoint'e istek atıyoruz
+    const response = await apiClient.post<PullRequestDto[]>('/api/github/pull-requests/query', {
+        repoFullName
+    });
+    // Gelen veriyi entity formatına çevirip döndürüyoruz
     return response.data.map(mapPrDtoToEntity);
-};
+}
 
-// 3. Metrik Sync
-export const syncPrMetrics = async (fullName: string): Promise<PrMetric[]> => {
-    const params = new URLSearchParams();
-    params.append('fullName', fullName);
-    const response = await apiClient.post<PrMetricsResponseDto>(
-        `/api/github/pull-requests/sync-metrics?${params.toString()}`,
-        {}
-    );
-    return response.data.pullRequests.map(mapPrMetricToEntity);
-};
-
-// --- DETAY SAYFASI İÇİN ---
-
-export const getPrBasicInfo = async (fullName: string, prNumber: number): Promise<PullRequest | null> => {
-    const allPrs = await queryPullRequests(fullName, '');
-    const found = allPrs.find(pr => pr.number === prNumber);
-    return found || null;
-};
-
-export const getPrMetrics = async (fullName: string, prNumber: number): Promise<PrMetric | null> => {
-    const params = new URLSearchParams();
-    params.append('fullName', fullName);
-
-    try {
-        const response = await apiClient.post<PrMetricsResponseDto>(
-            `/api/github/pull-requests/sync-metrics?${params.toString()}`,
-            {}
-        );
-        const foundItem = response.data.pullRequests.find(item => item.prNumber === prNumber);
-        return foundItem ? mapPrMetricToEntity(foundItem) : null;
-    } catch (error) {
-        console.error("Failed to sync PR metrics:", error);
-        throw error; // Re-throw to let caller handle
-    }
-};
+export const initPullRequests = startPrSync;

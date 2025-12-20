@@ -1,76 +1,108 @@
 // src/entities/pull-request/index.ts
 
-import type {
-    PullRequestDto,
-    PrMetricItemDto,
-    PrCommitDto,
-    PrReviewDto,
-    PrCommentDto
-} from '@/shared/lib/dto/pr-dto';
+import type { PullRequestDto, PrReviewDto, PrCommitDto } from '../../shared/lib/dto/pr-dto';
 
-// --- 1. Basic Entity ---
+// --- UI İçin Zenginleştirilmiş PullRequest Modeli ---
 export interface PullRequest {
-    id: number;
     number: number;
     title: string;
-    body: string | null;
-    state: string;
-    isMerged: boolean;
+    body: string;
+    state: 'open' | 'closed' | 'merged';
     author: string;
     htmlUrl: string;
-    sourceBranch: string;
-    targetBranch: string;
     createdAt: string;
-    closedAt: string | null;
-    // YENİ EKLENEN ALANLAR (İstatistikler)
-    additions: number | null;
-    deletions: number | null;
-    changedFiles: number | null;
+
+    // --- UI Hatalarını Çözen Yeni Alanlar ---
+    isMerged: boolean;          // UI bunu istiyor
+    closedAt: string | null;    // UI bunu istiyor
+    sourceBranch: string;       // UI bunu istiyor
+    targetBranch: string;       // UI bunu istiyor
+    additions: number;          // UI bunu istiyor (Flattened)
+    deletions: number;          // UI bunu istiyor (Flattened)
+    changedFiles: number;       // UI bunu istiyor (Flattened)
 }
 
-// --- 2. Metric Entity ---
-export interface PrMetric {
-    prNumber: number;
+export interface PrReview {
+    id: number;
+    author: string;
+    state: string;
+    body: string;
+    date: string; // submitted_at yerine date kullanıyoruz (UI kodunda düzelteceğiz)
+    htmlUrl: string;
+    user?: { login: string }; // UI bazen user.login diye erişiyor
+}
+
+export interface PrCommit {
+    sha: string;
+    message: string;
+    date: string;
+    html_url: string;
+    commit: {
+        message: string;
+        author: { name: string; date: string };
+    };
+    author?: { login: string; name: string };
+}
+
+// PrMetric, PullRequest'i genişletir
+export interface PrMetric extends PullRequest {
     commitCount: number;
     reviewCount: number;
     commentCount: number;
-    commits: PrCommitDto[];
-    reviews: PrReviewDto[];
-    comments: PrCommentDto[];
+    commits: PrCommit[];
+    reviews: PrReview[];
+    comments: any[]; // Şimdilik boş
 }
 
-// --- Mappers ---
+// --- MAPPERS ---
 
-export function mapPrDtoToEntity(dto: PullRequestDto): PullRequest {
+export const mapPrDtoToEntity = (dto: PullRequestDto): PullRequest => {
+    const isMerged = !!dto.mergedAt || (dto.state === 'closed' && !!dto.mergeCommitSha);
+
+    let computedState: 'open' | 'closed' | 'merged' = dto.state;
+    if (isMerged) computedState = 'merged';
+
     return {
-        id: dto.id,
-        number: dto.number,
+        number: dto.prNumber,
         title: dto.title,
-        body: dto.body,
-        state: dto.state,
-        isMerged: dto.merged,
-        author: dto.user?.login || 'Unknown',
-        htmlUrl: dto.html_url,
-        sourceBranch: dto.head.ref,
-        targetBranch: dto.base.ref,
-        createdAt: dto.created_at,
-        closedAt: dto.closed_at,
-        // YENİ ALANLARI EŞLİYORUZ
-        // Not: Backend bunları bazen null gönderebilir, güvenli olsun diye "??" kullanabilirsin ama DTO'da null tanımlı zaten.
-        additions: (dto as any).additions,
-        deletions: (dto as any).deletions,
-        changedFiles: (dto as any).changed_files
-    };
-}
+        body: dto.body || '',
+        state: computedState,
+        author: dto.authorLogin,
+        htmlUrl: dto.htmlUrl,
+        createdAt: dto.createdAt,
 
-export function mapPrMetricToEntity(dto: PrMetricItemDto): PrMetric {
-    return {
-        prNumber: dto.prNumber,
-        commitCount: dto.commitCount,
-        reviewCount: dto.reviewCount,
-        commentCount: dto.commentCount,
-        commits: dto.commits || [],
-        reviews: dto.reviews || [],
-        comments: dto.comments || []
+        // Eksik Alanları Dolduruyoruz
+        isMerged: isMerged,
+        closedAt: dto.closedAt,
+        sourceBranch: 'feature-branch', // Backend DTO'da yok, placeholder
+        targetBranch: 'main',           // Backend DTO'da yok, placeholder
+
+        // İstatistikleri root seviyeye çıkarıyoruz (Flatten)
+        additions: dto.changeStats?.additions || 0,
+        deletions: dto.changeStats?.deletions || 0,
+        changedFiles: dto.changeStats?.changedFiles || 0,
     };
-}
+};
+
+export const mapReviewDtoToEntity = (dto: PrReviewDto): PrReview => ({
+    id: dto.id,
+    author: dto.reviewer.login,
+    state: dto.state,
+    body: dto.body || '',
+    date: dto.submittedAt,
+    htmlUrl: dto.htmlUrl,
+    user: { login: dto.reviewer.login } // UI uyumluluğu için
+});
+
+export const mapCommitDtoToEntity = (dto: PrCommitDto): PrCommit => ({
+    sha: dto.sha,
+    message: dto.message,
+    date: dto.committedAt,
+    html_url: dto.htmlUrl,
+    // UI'ın beklediği iç içe yapı
+    commit: {
+        message: dto.message,
+        author: { name: dto.author.name || dto.author.login, date: dto.committedAt }
+    },
+    author: { login: dto.author.login, name: dto.author.name }
+});

@@ -270,7 +270,7 @@ export default function BranchCommitsPage() {
                     <ArrowLeft className="h-6 w-6 text-red-500" />
                 </div>
                 <h2 className="text-lg font-semibold text-slate-900">Repository Not Found</h2>
-                <p className="mt-2 text-sm text-slate-500">{error}</p>
+                <p className="mt-2 text-sm text-slate-500">{error.message}</p>
                 <button onClick={() => navigate('/repositories')} className="mt-6 text-sm font-medium text-blue-600 hover:underline">
                     Back to Repositories
                 </button>
