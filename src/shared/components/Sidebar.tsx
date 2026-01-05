@@ -1,4 +1,3 @@
-// src/shared/components/Sidebar.tsx
 import { NavLink, useNavigate } from "react-router-dom";
 import {
     LayoutGrid,
@@ -7,13 +6,15 @@ import {
     User,
     Settings,
     LogOut,
+    Activity // <--- YENİ İKON EKLENDİ
 } from "lucide-react";
 import { useAuth } from "@/shared/contexts/AuthContext";
 
+// --- NAVIGASYON LİSTESİ GÜNCELLENDİ ---
 const navItems = [
     { key: "Dashboard", icon: LayoutGrid, to: "/dashboard" },
     { key: "Repositories", icon: GitBranch, to: "/repositories" },
-    { key: "Organizations", icon: Building2, to: "/organizations" },
+    { key: "Performance", icon: Activity, to: "/user-performance" }, // <--- YENİ MENÜ
     { key: "Profile", icon: User, to: "/profile" },
 ];
 
@@ -28,8 +29,6 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
     /** Safe logout */
     const handleLogout = () => {
         logout();
-        // DÜZELTME: "/login" yerine "/" rotasına yönlendiriyoruz
-        // replace: true kullanarak kullanıcının geri tuşuyla tekrar içeri girmesini engelliyoruz
         setTimeout(() => navigate("/", { replace: true }), 0);
     };
 

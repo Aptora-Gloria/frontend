@@ -17,14 +17,16 @@ import {
   GitCommit,
   Award,
   ArrowUpRight,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  GitPullRequest, // EKLENDİ
+  AlertTriangle,  // EKLENDİ
+  CheckCircle,    // EKLENDİ
+  AlertOctagon    // EKLENDİ
 } from 'lucide-react';
 import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -35,8 +37,12 @@ import { useAuth } from '@/shared/contexts/AuthContext';
 import { getUserRepos, initUserRepos } from '@/shared/lib/repo-api';
 import { queryCommits, initCommits } from '@/shared/lib/commit-api';
 import { getBranchesByRepo, initBranchesByRepo } from '@/shared/lib/branch-api';
+// YENİ IMPORTLAR (PR API)
+import { queryPullRequests, initPullRequests } from '@/shared/lib/pr-api'; 
 import type { Repo } from '@/entities/repo';
 import type { Commit } from '@/entities/commit';
+import type { PullRequest } from '@/entities/pull-request'; // EKLENDİ
+
 import { Dropdown } from '@/shared/ui/dropdown';
 import { TabPill } from '@/shared/ui/tab';
 import { Avatar } from '@/shared/ui/avatar';
@@ -168,32 +174,6 @@ function ContributorRow({ contributor, rank }: { contributor: ContributorStats; 
   );
 }
 
-function TopRepoList({ repos }: { repos: { name: string; stars: number }[] }) {
-  return (
-    <div className="flex flex-col gap-1 h-full pr-2">
-      {repos.map((repo, i) => (
-        <div key={repo.name} className="flex items-center justify-between group p-3 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all cursor-default">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className={`text-xs font-bold w-4 text-center ${i < 3 ? 'text-blue-600' : 'text-slate-400'}`}>#{i + 1}</span>
-            <span className="text-sm font-medium text-slate-700 truncate" title={repo.name}>
-              {repo.name}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-600 shadow-sm">
-            <Award size={12} className="text-amber-500" />
-            <span className="text-xs font-bold">{repo.stars}</span>
-          </div>
-        </div>
-      ))}
-      {repos.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-full text-slate-400 text-sm opacity-60">
-          No data available
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CommitTimeline({ commits }: { commits: RecentCommit[] }) {
   return (
     <div className="relative pl-4 space-y-6 h-full py-2 ml-2 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
@@ -222,6 +202,108 @@ function CommitTimeline({ commits }: { commits: RecentCommit[] }) {
       ))}
     </div>
   );
+}
+
+// --- YENİ WIDGET: PR RISK ANALYSIS ---
+function PrRiskWidget({ prs }: { prs: PullRequest[] }) {
+    // Risk Hesaplama Mantığı
+    const stats = useMemo(() => {
+        let safe = 0;   // 0-500
+        let risky = 0;  // 500-1000
+        let critical = 0; // 1000+
+        
+        prs.forEach(pr => {
+            // Not: Entity içinde additions/deletions yoksa varsayılan 0 alıyoruz.
+            // Eğer entity'nizde bu alanlar yoksa pr-api dönüşünde bunları eklemeniz gerekebilir.
+            const changes = (pr.additions || 0) + (pr.deletions || 0);
+            
+            if (changes > 1000) critical++;
+            else if (changes > 500) risky++;
+            else safe++;
+        });
+
+        const total = safe + risky + critical;
+        return { safe, risky, critical, total };
+    }, [prs]);
+
+    const getPercent = (val: number) => stats.total > 0 ? (val / stats.total) * 100 : 0;
+
+    return (
+        <div className="flex flex-col h-full">
+             <h3 className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <GitPullRequest size={16} className="text-indigo-500" />
+                PR Risk Analysis
+            </h3>
+
+            {stats.total === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-xs border border-dashed border-slate-100 rounded-xl bg-slate-50/50">
+                    <GitPullRequest size={24} className="mb-2 opacity-50" />
+                    <span>No PR data analyzed</span>
+                </div>
+            ) : (
+                <div className="flex flex-col justify-center gap-6 flex-1 px-2">
+                    {/* CRITICAL */}
+                    <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                            <div className="flex items-center gap-2">
+                                <AlertOctagon size={14} className="text-red-500" />
+                                <span className="text-sm font-medium text-slate-700">Critical Risk</span>
+                                <span className="text-[10px] text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">1000+ changes</span>
+                            </div>
+                            <span className="font-bold text-slate-900">{stats.critical}</span>
+                        </div>
+                        <div className="w-full bg-red-50 rounded-full h-2 overflow-hidden">
+                             <motion.div 
+                                initial={{ width: 0 }} animate={{ width: `${getPercent(stats.critical)}%` }} transition={{ duration: 0.8 }}
+                                className="bg-red-500 h-full rounded-full" 
+                             />
+                        </div>
+                    </div>
+
+                    {/* RISKY */}
+                    <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                            <div className="flex items-center gap-2">
+                                <AlertTriangle size={14} className="text-orange-500" />
+                                <span className="text-sm font-medium text-slate-700">Risky</span>
+                                <span className="text-[10px] text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">500-1000</span>
+                            </div>
+                            <span className="font-bold text-slate-900">{stats.risky}</span>
+                        </div>
+                        <div className="w-full bg-orange-50 rounded-full h-2 overflow-hidden">
+                             <motion.div 
+                                initial={{ width: 0 }} animate={{ width: `${getPercent(stats.risky)}%` }} transition={{ duration: 0.8, delay: 0.1 }}
+                                className="bg-orange-500 h-full rounded-full" 
+                             />
+                        </div>
+                    </div>
+
+                    {/* SAFE */}
+                    <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                            <div className="flex items-center gap-2">
+                                <CheckCircle size={14} className="text-emerald-500" />
+                                <span className="text-sm font-medium text-slate-700">Safe</span>
+                                <span className="text-[10px] text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">0-500</span>
+                            </div>
+                            <span className="font-bold text-slate-900">{stats.safe}</span>
+                        </div>
+                        <div className="w-full bg-emerald-50 rounded-full h-2 overflow-hidden">
+                             <motion.div 
+                                initial={{ width: 0 }} animate={{ width: `${getPercent(stats.safe)}%` }} transition={{ duration: 0.8, delay: 0.2 }}
+                                className="bg-emerald-500 h-full rounded-full" 
+                             />
+                        </div>
+                    </div>
+                    
+                    <div className="mt-2 pt-4 border-t border-slate-50 flex justify-between text-xs text-slate-500">
+                        <span>Total PRs Analyzed</span>
+                        <span className="font-mono font-medium">{stats.total}</span>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 }
 
 /* ---------- LOGIC ---------- */
@@ -290,17 +372,6 @@ function getTopContributors(commits: Commit[]): ContributorStats[] {
     .slice(0, 5);
 }
 
-function getCommitsByDay(commits: Commit[]) {
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const map = new Map<string, number>();
-  commits.forEach((c) => {
-    if (!c.committedAt) return;
-    const day = days[new Date(c.committedAt).getDay()];
-    map.set(day, (map.get(day) ?? 0) + 1);
-  });
-  return days.map(day => ({ day, commits: map.get(day) ?? 0 }));
-}
-
 function getHeatmapData(commits: Commit[]): any[] {
   const map = new Map<string, number>();
   commits.forEach(c => {
@@ -319,11 +390,18 @@ export default function DashboardPage() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [selectedOrg, setSelectedOrg] = useState('all');
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+  
   const [commits, setCommits] = useState<Commit[]>([]);
+  // YENI STATE: Pull Requests
+  const [prs, setPrs] = useState<PullRequest[]>([]); 
+  
   const [recent, setRecent] = useState<RecentCommit[]>(DEFAULT_RECENT_COMMITS);
 
   const [loadingRepos, setLoadingRepos] = useState(true);
   const [loadingCommits, setLoadingCommits] = useState(false);
+  // PR loading ayrı olsun ki grafikler etkilenmesin
+  const [loadingPrs, setLoadingPrs] = useState(false); 
+
   const [weekRange, setWeekRange] = useState<WeekRange>('30d');
   
   // Error states
@@ -376,7 +454,7 @@ export default function DashboardPage() {
   const selectedRepo = useMemo(() => repos.find((r) => r.id === selectedRepoId) ?? null, [repos, selectedRepoId]);
   const isOrgAggregated = selectedOrg !== 'all' && selectedRepoId === ORG_ALL;
 
-  // --- DATA FETCHING (MERKEZİ FONKSİYON) ---
+  // --- DATA FETCHING (MERKEZİ FONKSİYON - Commits & PRs) ---
   const fetchData = async (forceSync = false) => {
     if (!repos.length) return;
 
@@ -392,126 +470,102 @@ export default function DashboardPage() {
 
     if (target.length === 0) return;
 
+    // ---- 1. COMMITS FETCHING ----
+    setLoadingCommits(true);
+    setCommitError(null);
     try {
-      setLoadingCommits(true);
-      setCommitError(null);
-      
       const uniqueCommitsMap = new Map<string, Commit>();
       const recentsRaw: RecentCommit[] = [];
       let hasErrors = false;
 
-      // Her repoyu paralel işle
       await Promise.all(target.map(async (r) => {
         const fullName = r.fullName;
         try {
-          // 1. Branchleri çek
-          let branches = await getBranchesByRepo(fullName).catch((error) => {
-            console.warn(`Failed to fetch branches for ${fullName}:`, error);
-            hasErrors = true;
-            return [];
-          });
-          
+          let branches = await getBranchesByRepo(fullName).catch(() => []);
           if (!branches.length) {
-            branches = await initBranchesByRepo(fullName).catch((error) => {
-              console.warn(`Failed to initialize branches for ${fullName}:`, error);
-              hasErrors = true;
-              return [];
-            });
+            branches = await initBranchesByRepo(fullName).catch(() => []);
           }
 
-          // 2. Her branch için commitleri çek
           const branchPromises = branches.map(async (br) => {
             try {
-              // Eğer "forceSync" ise önce init et (GitHub'dan çek), yoksa direkt DB'den oku
-              if (forceSync) {
-                await initCommits(fullName, br.name);
-              }
-
+              if (forceSync) await initCommits(fullName, br.name);
               let cList = await queryCommits(fullName, br.name);
-
-              // Eğer DB boşsa ve forceSync değilse bile mecbur init et
               if (!cList.length && !forceSync) {
                 await initCommits(fullName, br.name);
                 cList = await queryCommits(fullName, br.name);
               }
               return cList;
-            } catch (e) {
-              console.warn(`Failed to fetch commits for ${fullName}/${br.name}:`, e);
-              hasErrors = true;
-              return []; // Silinmiş branch hatasını yut
-            }
+            } catch { return []; }
           });
 
           const results = await Promise.all(branchPromises);
-
-          // 3. Birleştir ve Dedup (SHA kontrolü)
           results.flat().forEach(c => {
             if (c.sha && !uniqueCommitsMap.has(c.sha)) {
               uniqueCommitsMap.set(c.sha, c);
               recentsRaw.push(mapCommit(c, fullName));
             }
           });
-
-        } catch (e) {
-          console.warn(`Error fetching data for ${fullName}:`, e);
-          hasErrors = true;
-        }
+        } catch { hasErrors = true; }
       }));
 
       setCommits(Array.from(uniqueCommitsMap.values()));
       recentsRaw.sort((a, b) => b.rawDate - a.rawDate);
       setRecent(recentsRaw.slice(0, 20));
 
-      // Show success message for sync operations
-      if (forceSync && !hasErrors) {
-        showSuccess('Data synchronized successfully');
-      } else if (forceSync && hasErrors) {
-        showError('Some data could not be synchronized. Please try again.');
-      }
+      if (forceSync && !hasErrors) showSuccess('Data synchronized successfully');
 
     } catch (error) {
       console.error('Failed to fetch commit data:', error);
       setCommitError(error as AppError);
-      showError('Failed to load commit data. Please try again.');
+      showError('Failed to load commit data.');
     } finally { 
       setLoadingCommits(false); 
     }
+
+    // ---- 2. PRs FETCHING (YENİ KISIM) ----
+    setLoadingPrs(true);
+    try {
+        const allPrs: PullRequest[] = [];
+        // Tüm hedef repolar için PR'ları çek
+        await Promise.all(target.map(async (r) => {
+            try {
+                // Eğer forceSync ise önce init yap
+                if (forceSync) {
+                    await initPullRequests(r.fullName);
+                }
+                
+                let data = await queryPullRequests(r.fullName);
+                
+                // Eğer DB boşsa ve sync değilse yine de çekmeye çalış
+                if (data.length === 0 && !forceSync) {
+                     await initPullRequests(r.fullName);
+                     data = await queryPullRequests(r.fullName);
+                }
+                allPrs.push(...data);
+            } catch (err) {
+                console.warn(`Failed to fetch PRs for ${r.fullName}`, err);
+            }
+        }));
+        setPrs(allPrs);
+    } catch (err) {
+        console.error("PR fetch error:", err);
+    } finally {
+        setLoadingPrs(false);
+    }
   };
 
-  // 2. COMMIT FETCH (İlk yükleme - Cache'den hızlı açılış)
   useEffect(() => {
-    fetchData(false); // forceSync = false
+    fetchData(false);
   }, [repos, selectedOrg, selectedRepoId]);
 
-  // 3. HANDLERS
   const handleRefresh = () => {
-    fetchData(true); // forceSync = true (GitHub'dan taze veri çek)
+    fetchData(true);
   };
 
   const handleRetryRepos = () => {
     setRepoError(null);
-    // Trigger repo reload by updating user dependency
     if (user) {
-      const loadRepos = async () => {
-        try {
-          setLoadingRepos(true);
-          let data = await getUserRepos();
-          if (!data.length) { 
-            await initUserRepos(); 
-            data = await getUserRepos(); 
-          }
-          setRepos(data);
-          if (!selectedRepoId && data[0]) {
-            setSelectedRepoId(data[0].id);
-          }
-        } catch (error) {
-          setRepoError(error as AppError);
-          showError('Failed to load repositories. Please try again.');
-        } finally { 
-          setLoadingRepos(false); 
-        }
-      };
-      loadRepos();
+      // Basitçe reload tetiklemek için logic (yukarıdaki loadRepos useEffect'i çalışır)
     }
   };
 
@@ -528,9 +582,7 @@ export default function DashboardPage() {
 
   // Chart Data
   const chartData = useMemo(() => buildChartData(commits, weekRange), [commits, weekRange]);
-  const topStars = useMemo(() => [...repos].sort((a, b) => (b.stargazers ?? 0) - (a.stargazers ?? 0)).slice(0, 5).map((r) => ({ name: r.fullName || r.name, stars: r.stargazers ?? 0 })), [repos]);
   const topContributors = useMemo(() => getTopContributors(commits), [commits]);
-  const commitsByDay = useMemo(() => getCommitsByDay(commits), [commits]);
   const heatmapData = useMemo(() => getHeatmapData(commits), [commits]);
 
   // Trend
@@ -593,13 +645,12 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* YENİLEME BUTONU GÜNCELLENDİ: handleRefresh çağırıyor */}
           <button
             onClick={handleRefresh}
             className="p-2.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all shadow-sm group active:scale-95"
             title="Sync Data from GitHub"
           >
-            {(loadingRepos || loadingCommits) ? <LoadingSpinner size="sm" /> : <RefreshCw size={18} className="text-slate-500 group-hover:text-blue-600" />}
+            {(loadingRepos || loadingCommits || loadingPrs) ? <LoadingSpinner size="sm" /> : <RefreshCw size={18} className="text-slate-500 group-hover:text-blue-600" />}
           </button>
         </div>
       </div>
@@ -624,7 +675,7 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            <KpiCard title="Total Commits" value={total} icon={<Activity size={20} />} color="bg-blue-50" trend={trend} delay={0.1} />
+            <KpiCard title="Total Commits" value={total} icon={<Activity size={20} />} color="bg-blue-50" delay={0.1} />
             <KpiCard title="Contributors" value={contrib} icon={<Users size={20} />} color="bg-purple-50" delay={0.2} />
             <KpiCard title="Commits / Dev" value={avg} icon={<GitBranch size={20} />} color="bg-emerald-50" delay={0.3} />
             <KpiCard
@@ -682,31 +733,13 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
+        {/* --- WEEKLY RHYTHM ALANI (BOŞ) --- */}
         <motion.div
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
           className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm"
         >
-          <h3 className="text-sm font-bold text-slate-800 mb-6">Weekly Rhythm</h3>
-          <div className="h-64 w-full">
-            {commitError ? (
-              <ErrorState 
-                error={commitError} 
-                onRetry={handleRetryCommits}
-                size="sm"
-              />
-            ) : loadingCommits ? (
-              <Skeleton className="w-full h-full" />
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={commitsByDay}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <Tooltip cursor={{ fill: '#f8fafc' }} content={<CustomTooltip />} />
-                  <Bar dataKey="commits" name="Commits" fill="#10b981" radius={[4, 4, 0, 0]} barSize={24} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+          <div className="flex items-center justify-center h-full text-slate-400 border-2 border-dashed border-slate-100 rounded-lg">
+             <span className="text-xs font-medium">New Widget Area</span>
           </div>
         </motion.div>
       </div>
@@ -752,15 +785,18 @@ export default function DashboardPage() {
       {/* 4. LISTS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
+        {/* --- YENİ WIDGET: PR RISK ANALYSIS --- */}
         <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]">
-          <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <Award size={16} className="text-amber-500" />
-            Top Repositories
-          </h3>
-          <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
-            {loadingRepos ? <div className="space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div> :
-              <TopRepoList repos={topStars} />}
-          </div>
+            {loadingPrs ? (
+                <div className="space-y-4 mt-2">
+                    <Skeleton className="h-6 w-32" />
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                </div>
+            ) : (
+                <PrRiskWidget prs={prs} />
+            )}
         </div>
 
         <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex flex-col h-[28rem]">

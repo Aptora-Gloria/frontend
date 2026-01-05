@@ -214,26 +214,60 @@ export default function RepoDetailPage() {
         fetchRepo();
     }, [repo, repoId]);
 
-    // --- 2. Branches Load ---
+    // --- 2. Branches Load (DÜZELTME: 'as any' eklendi) ---
     useEffect(() => {
         if (!repo?.fullName) return;
+
         const loadBranches = async () => {
             try {
                 setIsLoadingBranches(true);
                 let list = await getBranchesByRepo(repo.fullName);
+
                 if (!list.length) {
                     await initBranchesByRepo(repo.fullName);
                     list = await getBranchesByRepo(repo.fullName);
                 }
-                setBranches(list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined)));
+
+                const mappedInitial = list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined));
+                setBranches(mappedInitial);
+                setIsLoadingBranches(false);
+
+                const enrichedBranches = await Promise.all(mappedInitial.map(async (branch) => {
+                    try {
+                        let cList = await queryCommits(repo.fullName, branch.name);
+                        if (!cList || cList.length === 0) {
+                            await initCommits(repo.fullName, branch.name);
+                            cList = await queryCommits(repo.fullName, branch.name);
+                        }
+
+                        if (cList && cList.length > 0) {
+                            // DÜZELTME BURADA: 'as any' kullanarak TypeScript hatasını eziyoruz
+                            const latest = cList[0] as any;
+
+                            const dateStr = latest.committedAt || latest.date || latest.commit?.author?.date;
+
+                            return {
+                                ...branch,
+                                lastCommitMessage: latest.message || latest.commit?.message || '—',
+                                lastCommitAt: dateStr ? new Date(dateStr).toLocaleString() : '—'
+                            };
+                        }
+                    } catch (e) {
+                        console.warn(`Could not fetch details for branch ${branch.name}`, e);
+                    }
+                    return branch;
+                }));
+
+                setBranches(enrichedBranches);
+
             } catch (error) {
                 console.error('Failed to load branches:', error);
                 setBranchError(error as AppError);
                 setBranches([]);
-            } finally {
                 setIsLoadingBranches(false);
             }
         };
+
         loadBranches();
     }, [repo]);
 
@@ -274,33 +308,30 @@ export default function RepoDetailPage() {
         fetchCommits();
     }, [repo, branches, branchFilter]);
 
-    // --- 4. PR Load (Düzeltildi: Otomatik Yükleme) ---
+    // --- 4. PR Load ---
     useEffect(() => {
         if (!repo?.fullName) return;
 
         const fetchPrs = async () => {
             setIsLoadingPrs(true);
             try {
-                // Sadece repo adını gönderiyoruz, 'all' yok.
                 let data = await queryPullRequests(repo.fullName);
 
-                // Eğer veritabanı boşsa Sync başlat ve tekrar çek
                 if (data.length === 0) {
-                    await initPullRequests(repo.fullName); // Bu void döner
-                    data = await queryPullRequests(repo.fullName); // Şimdi veriyi çekiyoruz
+                    await initPullRequests(repo.fullName);
+                    data = await queryPullRequests(repo.fullName);
                 }
                 setPrs(data);
             } catch (error) {
                 console.error("Failed to fetch pull requests:", error);
                 setPrError(error as AppError);
-                // PR hatası kullanıcıyı çok etkilemesin diye sessiz geçebiliriz veya toast
             } finally {
                 setIsLoadingPrs(false);
             }
         };
 
         fetchPrs();
-    }, [repo]); // Sadece repo değişince çalışır (Sayfa açılışı dahil)
+    }, [repo]);
 
     const handleRetryPrs = async () => {
         if (!repo?.fullName) return;
@@ -334,9 +365,29 @@ export default function RepoDetailPage() {
         try {
             await initBranchesByRepo(repo.fullName);
             const list = await getBranchesByRepo(repo.fullName);
-            setBranches(list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined)));
 
-            // PR'ları da yenile
+            const initialMapped = list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined));
+
+            // Sync sırasında da 'as any' kullanıyoruz
+            const enriched = await Promise.all(initialMapped.map(async (b) => {
+                try {
+                    await initCommits(repo.fullName, b.name);
+                    const cList = await queryCommits(repo.fullName, b.name);
+                    if (cList && cList.length > 0) {
+                        const latest = cList[0] as any; // DÜZELTME BURADA DA YAPILDI
+                        const dateStr = latest.committedAt || latest.date || latest.commit?.author?.date;
+                        return {
+                            ...b,
+                            lastCommitMessage: latest.message || latest.commit?.message || '—',
+                            lastCommitAt: dateStr ? new Date(dateStr).toLocaleString() : '—'
+                        };
+                    }
+                } catch { }
+                return b;
+            }));
+
+            setBranches(enriched);
+
             await initPullRequests(repo.fullName);
             const newPrs = await queryPullRequests(repo.fullName);
             setPrs(newPrs);

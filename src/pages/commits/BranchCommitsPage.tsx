@@ -15,7 +15,6 @@ import {
     ArrowLeft,
     GitBranch,
     Search,
-    User,
     ExternalLink,
     GitCommitHorizontal,
     Copy,
@@ -206,14 +205,14 @@ export default function BranchCommitsPage() {
 
     /* ---------- Data Processing ---------- */
 
-    // 1. Chart Data (Last 14 days - English Locale)
+    // 1. Chart Data (Last 30 days - English Locale)
     const chartData = useMemo(() => {
-        const days = Array.from({ length: 14 }, (_, i) => {
+        // DÜZELTME: 14 yerine 30 yapıldı
+        const days = Array.from({ length: 30 }, (_, i) => {
             const d = new Date();
             d.setDate(d.getDate() - i);
             return {
                 iso: d.toISOString().split('T')[0],
-                // Force English Date Format (e.g., Nov 10)
                 label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             };
         }).reverse();
@@ -341,7 +340,8 @@ export default function BranchCommitsPage() {
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2 text-slate-500">
                                     <BarChart3 className="h-4 w-4" />
-                                    <span className="text-xs font-semibold uppercase tracking-wider">Commit Velocity (14 Days)</span>
+                                    {/* DÜZELTME: Başlık güncellendi */}
+                                    <span className="text-xs font-semibold uppercase tracking-wider">Commit Velocity (30 Days)</span>
                                 </div>
                             </div>
                             <div className="flex-1 min-h-[160px]">

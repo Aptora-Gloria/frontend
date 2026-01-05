@@ -8,12 +8,13 @@ import {
   RepoDetailPage,
   ProfilePage,
   BranchCommitsPage,
-  OrganizationsPage,
+  UserPerformancePage, // <--- YENİ EKLENDİ
 } from '@/pages';
 
 import { ProtectedRoute } from '@/shared/components';
 import AppLayout from './AppLayout';
-import PrDetailPage from '@/pages/pull-request/PrDetailPage'; 
+import PrDetailPage from '@/pages/pull-request/PrDetailPage';
+
 export default function App() {
   return (
     <Routes>
@@ -71,24 +72,24 @@ export default function App() {
         }
       />
 
-      {/* Organizations */}
-      <Route
-        path="/organizations"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <OrganizationsPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-
       <Route
         path="/repositories/:repoId/pull-requests/:prNumber"
         element={
           <ProtectedRoute>
             <AppLayout>
               <PrDetailPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* --- YENİ EKLENEN ROUTE: USER PERFORMANCE --- */}
+      <Route
+        path="/user-performance"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <UserPerformancePage />
             </AppLayout>
           </ProtectedRoute>
         }
