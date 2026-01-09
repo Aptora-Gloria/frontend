@@ -4,7 +4,6 @@ import {
     GitBranch,
     Building2,
     User,
-    Settings,
     LogOut,
     Activity // <--- YENİ İKON EKLENDİ
 } from "lucide-react";
@@ -76,18 +75,7 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
                     </NavLink>
                 ))}
 
-                {/* --- AYARLAR BUTONU --- */}
-                <button
-                    onClick={onOpenSettings}
-                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
-                >
-                    <Settings
-                        className="h-[18px] w-[18px] text-slate-400 transition-colors group-hover:text-slate-600"
-                        strokeWidth={2}
-                    />
-                    <span>Settings</span>
-                </button>
-
+              
             </nav>
 
             {/* --- ALT KISIM: PROFİL & LOGOUT --- */}

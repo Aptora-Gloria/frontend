@@ -181,9 +181,6 @@ export default function ProfilePage() {
             <div className="h-48 w-full bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 relative overflow-hidden">
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
                 <div className="absolute bottom-4 right-6 flex gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 backdrop-blur-md text-white text-xs font-medium hover:bg-white/20 transition-colors border border-white/10">
-                        <Edit3 size={14} /> Change Cover
-                    </button>
                 </div>
             </div>
 

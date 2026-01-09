@@ -99,7 +99,6 @@ export interface ActivityTrendDto {
     };
 }
 
-// Backend'den gelen User Metrics yanıtı sadece bunları içeriyor:
 export interface UserMetricsDto {
     prMergeRate: PrMergeRateDto;
     prSize: PrSizeDto;

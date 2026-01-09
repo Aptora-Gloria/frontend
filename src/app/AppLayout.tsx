@@ -3,7 +3,6 @@
 
 import { ReactNode, useState } from "react";
 import Sidebar from "@/shared/components/Sidebar";
-import SettingsModal from "@/shared/components/SettingsModal";
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -11,19 +10,16 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
     // Modalın açık/kapalı durumunu tutan state
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
 
     return (
         <div className="min-h-screen bg-slate-50">
-            <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
+            <Sidebar />
 
             <div className="ml-[260px]">
                 {children}
             </div>
-            <SettingsModal
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-            />
+           
         </div>
     );
 }
