@@ -56,7 +56,7 @@ import { useAuth } from '@/shared/contexts/AuthContext';
 import { useToast } from '@/shared/contexts/ToastContext';
 
 import { getUserRepos, initUserRepos } from '@/shared/lib/repo-api';
-import { getBranchesByRepo } from '@/shared/lib/branch-api';
+import { getBranchesByRepo, initBranchesByRepo } from '@/shared/lib/branch-api';
 import { initCommits, queryCommits } from '@/shared/lib/commit-api';
 import { initPullRequests, queryPullRequests } from '@/shared/lib/pr-api';
 import { initLanguages, getRepoLanguages } from '@/shared/lib/language-api';
@@ -575,56 +575,71 @@ export default function DashboardPage() {
     if (firstRepoInOrg) setSelectedRepoId(firstRepoInOrg.id);
   };
 
-  const fetchMetrics = async (repoFullName: string) => {
-    setLoadingMetrics(true);
-    setRepoMetrics(null);
-    try {
-      const token = (user as any)?.accessToken || (user as any)?.token || localStorage.getItem('token');
-      const data = await getRepoMetrics(repoFullName, token);
-      setRepoMetrics(data);
-    } catch (err) { console.warn('Repo metrics error', err); } finally { setLoadingMetrics(false); }
-  };
-
   const fetchData = async (forceSync = false) => {
     if (!repos.length) return;
     const targetRepo = repos.find((r) => r.id === selectedRepoId);
     if (!targetRepo) return;
     const token = (user as any)?.accessToken || (user as any)?.token || localStorage.getItem('token');
 
-    fetchMetrics(targetRepo.fullName);
-    setLoadingCommits(true);
-    try {
-      const branches = await getBranchesByRepo(targetRepo.fullName).catch(() => []);
-      const uniqueCommitsMap = new Map<string, Commit>();
-      const results = await Promise.all(branches.map(async (br: any) => {
-        if (forceSync) await initCommits(targetRepo.fullName, br.name);
-        let cList = await queryCommits(targetRepo.fullName, br.name);
-        if (!cList.length && !forceSync) { await initCommits(targetRepo.fullName, br.name); cList = await queryCommits(targetRepo.fullName, br.name); }
-        return cList;
-      }));
-      results.flat().forEach((c: any) => { if (c.sha) uniqueCommitsMap.set(c.sha, c); });
-      setCommits(Array.from(uniqueCommitsMap.values()));
-      if (forceSync) showSuccess('Data synchronized.');
-    } catch (e) { showError('Failed to load commit data.'); } finally { setLoadingCommits(false); }
+    setLoadingMetrics(true);
+    setRepoMetrics(null);
 
-    setLoadingPrs(true);
     try {
-      if (forceSync) await initPullRequests(targetRepo.fullName);
-      let data = await queryPullRequests(targetRepo.fullName);
-      if (!data.length && !forceSync) { await initPullRequests(targetRepo.fullName); data = await queryPullRequests(targetRepo.fullName); }
-      setPrs(data);
-    } catch { } finally { setLoadingPrs(false); }
+      // 1) Ensure branches exist (DB boşken branch yok; önce init et ki commit sync çalışsın)
+      let branches = await getBranchesByRepo(targetRepo.fullName).catch(() => []);
+      if (!branches.length) {
+        await initBranchesByRepo(targetRepo.fullName);
+        branches = await getBranchesByRepo(targetRepo.fullName).catch(() => []);
+      }
 
-    setLoadingLanguages(true);
-    try {
-      if (forceSync) await initLanguages(targetRepo.fullName, token);
-      await initLanguages(targetRepo.fullName, token);
-      const langData = await getRepoLanguages(targetRepo.fullName, token);
-      if (langData?.items?.length) {
-        const totalBytes = langData.items.reduce((a: number, b: any) => a + b.bytes, 0);
-        setLanguages(langData.items.map((l: any) => ({ ...l, percentage: totalBytes ? (l.bytes / totalBytes) * 100 : 0 })));
-      } else { setLanguages([]); }
-    } catch { setLanguages([]); } finally { setLoadingLanguages(false); }
+      setLoadingCommits(true);
+      try {
+        const uniqueCommitsMap = new Map<string, Commit>();
+        const results = await Promise.all(branches.map(async (br: any) => {
+          if (forceSync) await initCommits(targetRepo.fullName, br.name);
+          let cList = await queryCommits(targetRepo.fullName, br.name);
+          if (!cList.length && !forceSync) {
+            await initCommits(targetRepo.fullName, br.name);
+            cList = await queryCommits(targetRepo.fullName, br.name);
+          }
+          return cList;
+        }));
+        results.flat().forEach((c: any) => { if (c.sha) uniqueCommitsMap.set(c.sha, c); });
+        setCommits(Array.from(uniqueCommitsMap.values()));
+        if (forceSync) showSuccess('Data synchronized.');
+      } catch (e) { showError('Failed to load commit data.'); } finally { setLoadingCommits(false); }
+
+      setLoadingPrs(true);
+      try {
+        if (forceSync) await initPullRequests(targetRepo.fullName);
+        let data = await queryPullRequests(targetRepo.fullName);
+        if (!data.length && !forceSync) {
+          await initPullRequests(targetRepo.fullName);
+          data = await queryPullRequests(targetRepo.fullName);
+        }
+        setPrs(data);
+      } catch { } finally { setLoadingPrs(false); }
+
+      setLoadingLanguages(true);
+      try {
+        if (forceSync) await initLanguages(targetRepo.fullName, token);
+        await initLanguages(targetRepo.fullName, token);
+        const langData = await getRepoLanguages(targetRepo.fullName, token);
+        if (langData?.items?.length) {
+          const totalBytes = langData.items.reduce((a: number, b: any) => a + b.bytes, 0);
+          setLanguages(langData.items.map((l: any) => ({ ...l, percentage: totalBytes ? (l.bytes / totalBytes) * 100 : 0 })));
+        } else { setLanguages([]); }
+      } catch { setLanguages([]); } finally { setLoadingLanguages(false); }
+
+      // 2) Sync bittikten sonra metrics al; kullanıcı sadece dolu sonucu görsün
+      const metricsData = await getRepoMetrics(targetRepo.fullName, token);
+      setRepoMetrics(metricsData);
+    } catch (err) {
+      console.warn('Dashboard data error', err);
+      showError('Failed to load dashboard data.');
+    } finally {
+      setLoadingMetrics(false);
+    }
   };
 
   useEffect(() => { fetchData(false); }, [selectedRepoId]);
