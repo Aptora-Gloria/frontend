@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import CountUp from 'react-countup';
-import CalendarHeatmap from 'react-calendar-heatmap';
-import 'react-calendar-heatmap/dist/styles.css';
 
 import {
   Activity,
@@ -80,15 +78,7 @@ import type { AppError } from '@/shared/errors';
 type WeekRange = '7d' | '30d' | '90d';
 
 /* ---------- STYLES ---------- */
-const heatmapStyles = `
-  .react-calendar-heatmap text { font-size: 9px; fill: #9ca3af; }
-  .react-calendar-heatmap .color-empty { fill: #ebedf0; } 
-  .react-calendar-heatmap .color-scale-1 { fill: #9be9a8; }
-  .react-calendar-heatmap .color-scale-2 { fill: #40c463; }
-  .react-calendar-heatmap .color-scale-3 { fill: #30a14e; }
-  .react-calendar-heatmap .color-scale-4 { fill: #216e39; }
-  .react-calendar-heatmap rect { rx: 2px; stroke: #fff; stroke-width: 1px; }
-
+const scrollbarStyles = `
   .custom-scrollbar::-webkit-scrollbar { width: 4px; }
   .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
   .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
@@ -156,16 +146,6 @@ function formatDataForRadar(dayMap: Record<string, number> | undefined) {
 function formatDataForPie(stateMap: Record<string, number> | undefined) {
   if (!stateMap) return [];
   return Object.entries(stateMap).map(([name, value]) => ({ name: name.replace('_', ' '), value }));
-}
-
-function getHeatmapData(commits: Commit[]): any[] {
-  const map = new Map<string, number>();
-  commits.forEach((c) => {
-    if (!c.committedAt) return;
-    const dateStr = new Date(c.committedAt).toISOString().split('T')[0];
-    map.set(dateStr, (map.get(dateStr) || 0) + 1);
-  });
-  return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
 }
 
 function buildChartData(commits: Commit[], range: WeekRange) {
@@ -652,8 +632,17 @@ export default function DashboardPage() {
 
   const selectedRepo = useMemo(() => repos.find((r) => r.id === selectedRepoId) || null, [repos, selectedRepoId]);
   const radarData = useMemo(() => formatDataForRadar((repoMetrics as any)?.commits?.commitsByDayOfWeek), [repoMetrics]);
-  const commitsByHour = useMemo(() => getCommitsByHour(commits), [commits]);
-  const heatmapData = useMemo(() => getHeatmapData(commits), [commits]);
+  // Productivity Hours: prefer backend repo metrics (commitsByHour) when available; fallback to client-side from commit list
+  const commitsByHour = useMemo(() => {
+    const fromMetrics = (repoMetrics as any)?.commits?.commitsByHour;
+    if (fromMetrics && typeof fromMetrics === 'object') {
+      return Array.from({ length: 24 }, (_, i) => ({
+        hour: i,
+        count: Number(fromMetrics[i] ?? fromMetrics[String(i)] ?? 0),
+      }));
+    }
+    return getCommitsByHour(commits);
+  }, [repoMetrics, commits]);
   const chartData = useMemo(() => buildChartData(commits, weekRange), [commits, weekRange]);
   const activityData = useMemo(() => {
     const weekly = (repoMetrics as any)?.activityTrend?.weeklyTrend || [];
@@ -668,7 +657,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFBFC] p-6 lg:p-8 font-sans text-slate-900">
-      <style>{heatmapStyles}</style>
+      <style>{scrollbarStyles}</style>
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
@@ -772,13 +761,6 @@ export default function DashboardPage() {
             <TopContributorsWidget contributors={topContributors} />
             <TopReviewersWidget reviewers={topReviewers} />
             <RepositoryDetailsWidget overview={(repoMetrics as any).overview} />
-          </div>
-
-          <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-sm mb-6">
-            <SectionTitle icon={<CalendarIcon size={18} className="text-slate-400" />} title="Contribution Calendar" />
-            <div className="w-full">
-              <CalendarHeatmap startDate={new Date(new Date().setFullYear(new Date().getFullYear() - 1))} endDate={new Date()} values={heatmapData} classForValue={(value: any) => !value || value.count === 0 ? 'color-empty' : `color-scale-${Math.min(value.count, 4)}`} showWeekdayLabels gutterSize={3} />
-            </div>
           </div>
         </>
       ) : (
