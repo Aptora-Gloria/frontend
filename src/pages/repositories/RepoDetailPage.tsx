@@ -1,4 +1,3 @@
-// src/pages/repositories/RepoDetailPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -26,14 +25,21 @@ import {
     Unlock,
     Terminal,
     Zap,
-    History
+    History,
+    GitPullRequest,
+    ArrowRight
 } from 'lucide-react';
 
 import type { Repo } from '@/entities/repo';
 import { getUserRepos } from '@/shared/lib/repo-api';
 import { getBranchesByRepo, initBranchesByRepo } from '@/shared/lib/branch-api';
 import { initCommits, queryCommits } from '@/shared/lib/commit-api';
+import { queryPullRequests, initPullRequests } from '@/shared/lib/pr-api';
+import type { PullRequest } from '@/entities/pull-request';
 import { Avatar } from '@/shared/ui';
+import { useToast } from '@/shared/contexts/ToastContext';
+import { ErrorState } from '@/shared/ui/error-state';
+import type { AppError } from '@/shared/errors';
 
 /* ---------- Language Color Map ---------- */
 const LANG_COLOR: Record<string, string> = {
@@ -51,7 +57,6 @@ const LANG_COLOR: Record<string, string> = {
 };
 
 /* ---------- Helpers & Mappers ---------- */
-
 function mapBranchToItem(b: any, defaultBranch?: string) {
     const rawDate = b.lastCommitAt ?? b.latestCommitAt ?? b.commit?.committedAt;
     return {
@@ -90,7 +95,6 @@ function formatSize(kb: number): string {
 }
 
 /* ---------- UI Components ---------- */
-
 const CopyButton = ({ text, className }: { text: string, className?: string }) => {
     const [copied, setCopied] = useState(false);
     const handleCopy = () => {
@@ -108,8 +112,7 @@ const CopyButton = ({ text, className }: { text: string, className?: string }) =
 const TabButton = ({ active, label, count, onClick }: { active: boolean, label: string, count?: number, onClick: () => void }) => (
     <button
         onClick={onClick}
-        className={`relative flex items-center gap-2 px-1 py-4 text-sm font-medium transition-colors ${active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
-            }`}
+        className={`relative flex items-center gap-2 px-1 py-4 text-sm font-medium transition-colors ${active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
     >
         {label}
         {count !== undefined && (
@@ -118,10 +121,7 @@ const TabButton = ({ active, label, count, onClick }: { active: boolean, label: 
             </span>
         )}
         {active && (
-            <motion.div
-                layoutId="activeTab"
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
-            />
+            <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
         )}
     </button>
 );
@@ -154,7 +154,6 @@ const CommitTimelineItem = ({ commit }: { commit: any }) => (
                         </span>
                     </div>
                 </div>
-
                 <div className="flex items-center gap-2 self-start rounded-lg border border-slate-100 bg-slate-50 px-2 py-1">
                     <GitCommitHorizontal className="h-3.5 w-3.5 text-slate-400" />
                     <span className="font-mono text-xs text-slate-600">{commit.sha.slice(0, 7)}</span>
@@ -170,25 +169,32 @@ const CommitTimelineItem = ({ commit }: { commit: any }) => (
 );
 
 /* ---------- Main Page Component ---------- */
-
 export default function RepoDetailPage() {
     const { repoId } = useParams<{ repoId: string }>();
     const location = useLocation();
     const navigate = useNavigate();
+    const { showError, showSuccess } = useToast();
     const state = location.state as { repo?: Repo } | null;
 
     const [repo, setRepo] = useState<Repo | null>(state?.repo ?? null);
     const [branches, setBranches] = useState<any[]>([]);
     const [commits, setCommits] = useState<any[]>([]);
+    const [prs, setPrs] = useState<PullRequest[]>([]);
 
     const [isLoadingRepo, setIsLoadingRepo] = useState(false);
     const [isLoadingBranches, setIsLoadingBranches] = useState(false);
     const [isLoadingCommits, setIsLoadingCommits] = useState(false);
+    const [isLoadingPrs, setIsLoadingPrs] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'branches'>('overview');
+    const [repoError, setRepoError] = useState<AppError | null>(null);
+    const [branchError, setBranchError] = useState<AppError | null>(null);
+    const [commitError, setCommitError] = useState<AppError | null>(null);
+    const [prError, setPrError] = useState<AppError | null>(null);
+
+    const [activeTab, setActiveTab] = useState<'overview' | 'commits' | 'branches' | 'pull-requests'>('overview');
     const [branchFilter, setBranchFilter] = useState<string>('all');
 
-    // 1. Repo Load
+    // --- 1. Repo Load ---
     useEffect(() => {
         if (repo || !repoId) return;
         const fetchRepo = async () => {
@@ -197,8 +203,10 @@ export default function RepoDetailPage() {
                 const all = await getUserRepos();
                 const found = all.find((r) => String(r.id) === String(repoId)) ?? null;
                 setRepo(found);
-            } catch (e) {
-                console.error(e);
+            } catch (error) {
+                console.error('Failed to load repository:', error);
+                setRepoError(error as AppError);
+                showError('Failed to load repository details.');
             } finally {
                 setIsLoadingRepo(false);
             }
@@ -206,54 +214,92 @@ export default function RepoDetailPage() {
         fetchRepo();
     }, [repo, repoId]);
 
-    // 2. Branches Load
+    // --- 2. Branches Load (DÜZELTME: 'as any' eklendi) ---
     useEffect(() => {
         if (!repo?.fullName) return;
+
         const loadBranches = async () => {
             try {
                 setIsLoadingBranches(true);
                 let list = await getBranchesByRepo(repo.fullName);
+
                 if (!list.length) {
                     await initBranchesByRepo(repo.fullName);
                     list = await getBranchesByRepo(repo.fullName);
                 }
-                setBranches(list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined)));
-            } catch (e) {
+
+                const mappedInitial = list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined));
+                setBranches(mappedInitial);
+                setIsLoadingBranches(false);
+
+                const enrichedBranches = await Promise.all(mappedInitial.map(async (branch) => {
+                    try {
+                        let cList = await queryCommits(repo.fullName, branch.name);
+                        if (!cList || cList.length === 0) {
+                            await initCommits(repo.fullName, branch.name);
+                            cList = await queryCommits(repo.fullName, branch.name);
+                        }
+
+                        if (cList && cList.length > 0) {
+                            // DÜZELTME BURADA: 'as any' kullanarak TypeScript hatasını eziyoruz
+                            const latest = cList[0] as any;
+
+                            const dateStr = latest.committedAt || latest.date || latest.commit?.author?.date;
+
+                            return {
+                                ...branch,
+                                lastCommitMessage: latest.message || latest.commit?.message || '—',
+                                lastCommitAt: dateStr ? new Date(dateStr).toLocaleString() : '—'
+                            };
+                        }
+                    } catch (e) {
+                        console.warn(`Could not fetch details for branch ${branch.name}`, e);
+                    }
+                    return branch;
+                }));
+
+                setBranches(enrichedBranches);
+
+            } catch (error) {
+                console.error('Failed to load branches:', error);
+                setBranchError(error as AppError);
                 setBranches([]);
-            } finally {
                 setIsLoadingBranches(false);
             }
         };
+
         loadBranches();
     }, [repo]);
 
-    // 3. Commits Load
+    // --- 3. Commits Load ---
     useEffect(() => {
         if (!repo?.fullName || branches.length === 0) return;
+
         const fetchCommits = async () => {
             try {
                 setIsLoadingCommits(true);
                 const branchNames = branchFilter === 'all' ? branches.map((b) => b.name) : [branchFilter];
-                const allRawCommits: any[] = [];
-
-                for (const br of branchNames) {
-                    await initCommits(repo.fullName, br);
-                    const data = await queryCommits(repo.fullName, br);
-                    allRawCommits.push(...data.map((c: any) => mapCommitToItem(c, br)));
-                }
-
+                const promises = branchNames.map(async (br) => {
+                    try {
+                        await initCommits(repo.fullName, br);
+                        const data = await queryCommits(repo.fullName, br);
+                        return data.map((c: any) => mapCommitToItem(c, br));
+                    } catch (err) {
+                        return [];
+                    }
+                });
+                const results = await Promise.all(promises);
+                const allRawCommits = results.flat();
                 const uniqueMap = new Map();
                 allRawCommits.forEach(item => {
-                    if (!uniqueMap.has(item.sha)) {
-                        uniqueMap.set(item.sha, item);
-                    }
+                    if (!uniqueMap.has(item.sha)) uniqueMap.set(item.sha, item);
                 });
                 const uniqueCommits = Array.from(uniqueMap.values());
                 uniqueCommits.sort((a: any, b: any) => b.rawDate.getTime() - a.rawDate.getTime());
-
                 setCommits(uniqueCommits);
-            } catch (e) {
-                console.error("Commits fetch error:", e);
+            } catch (error) {
+                console.error("Failed to fetch commits:", error);
+                setCommitError(error as AppError);
                 setCommits([]);
             } finally {
                 setIsLoadingCommits(false);
@@ -262,13 +308,96 @@ export default function RepoDetailPage() {
         fetchCommits();
     }, [repo, branches, branchFilter]);
 
-    // --- DÜZELTİLDİ: DOĞRU URL'E GİTME ---
+    // --- 4. PR Load ---
+    useEffect(() => {
+        if (!repo?.fullName) return;
+
+        const fetchPrs = async () => {
+            setIsLoadingPrs(true);
+            try {
+                let data = await queryPullRequests(repo.fullName);
+
+                if (data.length === 0) {
+                    await initPullRequests(repo.fullName);
+                    data = await queryPullRequests(repo.fullName);
+                }
+                setPrs(data);
+            } catch (error) {
+                console.error("Failed to fetch pull requests:", error);
+                setPrError(error as AppError);
+            } finally {
+                setIsLoadingPrs(false);
+            }
+        };
+
+        fetchPrs();
+    }, [repo]);
+
+    const handleRetryPrs = async () => {
+        if (!repo?.fullName) return;
+        setPrError(null);
+        try {
+            setIsLoadingPrs(true);
+            let data = await queryPullRequests(repo.fullName);
+            if (data.length === 0) {
+                await initPullRequests(repo.fullName);
+                data = await queryPullRequests(repo.fullName);
+            }
+            setPrs(data);
+        } catch (error) {
+            setPrError(error as AppError);
+            showError('Failed to load pull requests.');
+        } finally {
+            setIsLoadingPrs(false);
+        }
+    };
+
     const handleGoToBranch = (branchName: string) => {
         if (!repo) return;
-        // "/commits" EKİ EKLENDİ!
         navigate(`/repositories/${repo.id}/branches/${encodeURIComponent(branchName)}/commits`, {
             state: { repo, branchName }
         });
+    };
+
+    const handleSync = async () => {
+        if (!repo?.fullName) return;
+        setIsLoadingRepo(true);
+        try {
+            await initBranchesByRepo(repo.fullName);
+            const list = await getBranchesByRepo(repo.fullName);
+
+            const initialMapped = list.map((b) => mapBranchToItem(b, repo.defaultBranch ?? undefined));
+
+            // Sync sırasında da 'as any' kullanıyoruz
+            const enriched = await Promise.all(initialMapped.map(async (b) => {
+                try {
+                    await initCommits(repo.fullName, b.name);
+                    const cList = await queryCommits(repo.fullName, b.name);
+                    if (cList && cList.length > 0) {
+                        const latest = cList[0] as any; // DÜZELTME BURADA DA YAPILDI
+                        const dateStr = latest.committedAt || latest.date || latest.commit?.author?.date;
+                        return {
+                            ...b,
+                            lastCommitMessage: latest.message || latest.commit?.message || '—',
+                            lastCommitAt: dateStr ? new Date(dateStr).toLocaleString() : '—'
+                        };
+                    }
+                } catch { }
+                return b;
+            }));
+
+            setBranches(enriched);
+
+            await initPullRequests(repo.fullName);
+            const newPrs = await queryPullRequests(repo.fullName);
+            setPrs(newPrs);
+
+            showSuccess('Repository synced successfully.');
+        } catch (e) {
+            showError('Sync failed.');
+        } finally {
+            setIsLoadingRepo(false);
+        }
     };
 
     const repoLanguage = repo?.language ?? 'Unknown';
@@ -327,14 +456,11 @@ export default function RepoDetailPage() {
                                 GitHub
                             </a>
                             <button
-                                onClick={async () => {
-                                    if (!repo.fullName) return;
-                                    await initBranchesByRepo(repo.fullName);
-                                    await getBranchesByRepo(repo.fullName);
-                                }}
-                                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-colors active:scale-95"
+                                onClick={handleSync}
+                                disabled={isLoadingRepo}
+                                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-colors active:scale-95 disabled:opacity-50"
                             >
-                                <RefreshCw className="h-4 w-4" />
+                                <RefreshCw className={`h-4 w-4 ${isLoadingRepo ? 'animate-spin' : ''}`} />
                                 Sync Data
                             </button>
                         </div>
@@ -345,13 +471,14 @@ export default function RepoDetailPage() {
                         <StatBadge icon={GitFork} label="forks" value={repo.forks ?? 0} />
                         <StatBadge icon={Eye} label="watchers" value={repo.watchers ?? 0} />
                         <StatBadge icon={AlertCircle} label="issues" value={repo.openIssues ?? 0} />
-                        <StatBadge icon={GitBranch} label="default" value={repo.defaultBranch ?? 'main'} />
+                        <StatBadge icon={GitPullRequest} label="pull requests" value={prs.length > 0 ? prs.length : '-'} />
                     </div>
 
                     <div className="mt-6 flex gap-6 border-b border-slate-200">
                         <TabButton active={activeTab === 'overview'} label="Overview" onClick={() => setActiveTab('overview')} />
                         <TabButton active={activeTab === 'commits'} label="Commits" count={commits.length > 0 ? commits.length : undefined} onClick={() => setActiveTab('commits')} />
                         <TabButton active={activeTab === 'branches'} label="Branches" count={branches.length > 0 ? branches.length : undefined} onClick={() => setActiveTab('branches')} />
+                        <TabButton active={activeTab === 'pull-requests'} label="Pull Requests" count={prs.length > 0 ? prs.length : undefined} onClick={() => setActiveTab('pull-requests')} />
                     </div>
                 </div>
             </div>
@@ -360,7 +487,7 @@ export default function RepoDetailPage() {
             <main className="mx-auto max-w-7xl px-6 py-8">
                 {activeTab === 'overview' && <OverviewTabContent repo={repo} commits={commits} languageColor={languageColor} repoLanguage={repoLanguage} />}
 
-                {/* Commits Tab (Mini View) */}
+                {/* Commits Tab */}
                 {activeTab === 'commits' && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -428,17 +555,99 @@ export default function RepoDetailPage() {
                         </div>
                     </motion.div>
                 )}
+
+                {/* Pull Requests Tab */}
+                {activeTab === 'pull-requests' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            {isLoadingPrs ? (
+                                <div className="text-center py-12 text-slate-500">Loading pull requests...</div>
+                            ) : prs.length === 0 ? (
+                                <div className="text-center py-12 flex flex-col items-center">
+                                    <GitPullRequest className="h-12 w-12 text-slate-300 mb-3" />
+                                    <p className="text-slate-500">No pull requests found.</p>
+                                    <button onClick={handleSync} className="mt-4 text-sm font-medium text-blue-600 hover:underline">
+                                        Sync with GitHub
+                                    </button>
+                                </div>
+                            ) : (
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50/50 text-xs font-medium uppercase text-slate-500">
+                                        <tr>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Pull Request</th>
+                                            <th className="px-6 py-4">Branch Flow</th>
+                                            <th className="px-6 py-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {prs.map((pr) => {
+                                            const isMerged = pr.isMerged;
+                                            const isClosed = pr.state === 'closed';
+                                            const isOpen = pr.state === 'open';
+
+                                            return (
+                                                <tr key={pr.number} className="group hover:bg-slate-50/50">
+                                                    <td className="px-6 py-4 align-top">
+                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold
+                                                            ${isOpen ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                isMerged ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                                                    'bg-slate-100 text-slate-600 border-slate-200'
+                                                            }`}
+                                                        >
+                                                            <GitPullRequest className="h-3.5 w-3.5" />
+                                                            {isOpen ? 'Open' : isMerged ? 'Merged' : 'Closed'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="font-semibold text-slate-900 line-clamp-1" title={pr.title}>
+                                                                {pr.title}
+                                                            </span>
+                                                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                                <span className="font-mono">#{pr.number}</span>
+                                                                <span>•</span>
+                                                                <span>opened by <span className="font-medium text-slate-700">{pr.author}</span></span>
+                                                                <span>•</span>
+                                                                <span>{new Date(pr.createdAt).toLocaleDateString()}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2 text-xs font-mono">
+                                                            <span className="bg-slate-100 px-2 py-1 rounded text-slate-700 border border-slate-200">
+                                                                {pr.sourceBranch}
+                                                            </span>
+                                                            <ArrowRight className="h-3 w-3 text-slate-400" />
+                                                            <span className="bg-slate-100 px-2 py-1 rounded text-slate-700 border border-slate-200">
+                                                                {pr.targetBranch}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <button
+                                                            onClick={() => navigate(`/repositories/${repo.id}/pull-requests/${pr.number}`, { state: { pr, repo } })}
+                                                            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                        >
+                                                            Details
+                                                            <ArrowRight className="h-3 w-3" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
             </main>
         </div>
     );
 }
 
-/* ---------------------------------------------
-   OVERVIEW CONTENT WIDGETS
-   --------------------------------------------- */
-
 const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { repo: Repo, commits: any[], languageColor: string, repoLanguage: string }) => {
-
     // Top Contributors
     const topContributors = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -453,7 +662,7 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
     const latestCommit = commits.length > 0 ? commits[0] : null;
     const cloneUrl = repo.htmlUrl ? `${repo.htmlUrl}.git` : 'https://github.com/.../repo.git';
 
-    // Activity Analysis (Gerçek Veri)
+    // Activity Analysis
     const activityInfo = useMemo(() => {
         if (!latestCommit) return { status: 'Unknown', color: 'text-slate-500', bg: 'bg-slate-100' };
         const now = new Date();
@@ -467,11 +676,8 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
 
     return (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-
             {/* SOL KOLON */}
             <div className="lg:col-span-2 space-y-6">
-
-                {/* 1. Repository Intelligence Card (YENİLENDİ: Boşsa "Cockpit" göster) */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     {repo.description ? (
                         <>
@@ -482,7 +688,6 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                             <p className="text-sm leading-relaxed text-slate-600 mb-6">{repo.description}</p>
                         </>
                     ) : (
-                        // BOŞSA GÖSTERİLECEK AKILLI ALAN (COCKPIT)
                         <div className="mb-6">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
@@ -493,8 +698,6 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                                     {activityInfo.status}
                                 </span>
                             </div>
-
-                            {/* Fake Terminal for Clone */}
                             <div className="rounded-xl bg-[#1e293b] border border-slate-800 overflow-hidden shadow-md">
                                 <div className="flex items-center gap-1.5 px-4 py-2 bg-[#0f172a] border-b border-slate-800">
                                     <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
@@ -510,8 +713,6 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                                     <CopyButton text={`git clone ${cloneUrl}`} className="text-slate-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </div>
                             </div>
-
-                            {/* Latest Activity Snippet */}
                             {latestCommit && (
                                 <div className="mt-4 flex items-start gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100">
                                     <div className="mt-1">
@@ -530,8 +731,6 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                             )}
                         </div>
                     )}
-
-                    {/* Meta Data Footer */}
                     <div className="pt-6 border-t border-slate-100 grid grid-cols-2 gap-4 sm:grid-cols-3">
                         <div className="space-y-1">
                             <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">License</div>
@@ -549,18 +748,14 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                         </div>
                     </div>
                 </div>
-
-                {/* 2. Language Dominance */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex items-center gap-2 mb-6">
                         <Code2 className="h-5 w-5 text-slate-400" />
                         <h3 className="text-lg font-semibold text-slate-900">Dominant Language</h3>
                     </div>
-
                     <div className="flex h-4 w-full overflow-hidden rounded-full bg-slate-100 ring-4 ring-white shadow-sm">
                         <div style={{ width: '100%', backgroundColor: languageColor }} title={repoLanguage} />
                     </div>
-
                     <div className="mt-4 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="h-3 w-3 rounded-full" style={{ backgroundColor: languageColor }} />
@@ -570,11 +765,8 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                     </div>
                 </div>
             </div>
-
             {/* SAĞ KOLON */}
             <div className="space-y-6">
-
-                {/* 1. Contributors */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
@@ -582,7 +774,6 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                             <h3 className="text-base font-semibold text-slate-900">Top Contributors</h3>
                         </div>
                     </div>
-
                     <div className="space-y-4">
                         {topContributors.length > 0 ? topContributors.map((contributor, idx) => (
                             <div key={idx} className="flex items-center justify-between group">
@@ -607,14 +798,11 @@ const OverviewTabContent = ({ repo, commits, languageColor, repoLanguage }: { re
                         )}
                     </div>
                 </div>
-
-                {/* 2. Health */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
                         <Activity className="h-5 w-5 text-slate-400" />
                         <h3 className="text-base font-semibold text-slate-900">Repository Health</h3>
                     </div>
-
                     <div className="space-y-3">
                         <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
                             <div className="flex items-center gap-2">

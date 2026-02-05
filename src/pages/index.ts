@@ -17,4 +17,4 @@ export { default as ProfilePage } from './profile/ProfilePage';
 
 export { default as BranchCommitsPage } from './commits/BranchCommitsPage';
 
-export { default as OrganizationsPage } from './organizations/OrganizationsPage';
+export { default as UserPerformancePage } from './userperformance/UserPerformancePage';

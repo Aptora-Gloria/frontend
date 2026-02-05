@@ -8,17 +8,21 @@ import {
   RepoDetailPage,
   ProfilePage,
   BranchCommitsPage,
-  OrganizationsPage,
+  UserPerformancePage, // <--- YENİ EKLENDİ
 } from '@/pages';
+
 import { ProtectedRoute } from '@/shared/components';
 import AppLayout from './AppLayout';
+import PrDetailPage from '@/pages/pull-request/PrDetailPage';
 
 export default function App() {
   return (
     <Routes>
-      {/* Login */}
+      {/* --- Public Routes --- */}
       <Route path="/" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+      {/* --- Protected Routes --- */}
 
       {/* Dashboard */}
       <Route
@@ -32,7 +36,7 @@ export default function App() {
         }
       />
 
-      {/* Repositories list */}
+      {/* Repositories List */}
       <Route
         path="/repositories"
         element={
@@ -44,7 +48,7 @@ export default function App() {
         }
       />
 
-      {/* Repo detail */}
+      {/* Repository Detail */}
       <Route
         path="/repositories/:repoId"
         element={
@@ -68,13 +72,24 @@ export default function App() {
         }
       />
 
-      {/* Organizations (YENİ EKLENDİ) */}
       <Route
-        path="/organizations"
+        path="/repositories/:repoId/pull-requests/:prNumber"
         element={
           <ProtectedRoute>
             <AppLayout>
-              <OrganizationsPage />
+              <PrDetailPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* --- YENİ EKLENEN ROUTE: USER PERFORMANCE --- */}
+      <Route
+        path="/user-performance"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <UserPerformancePage />
             </AppLayout>
           </ProtectedRoute>
         }
@@ -92,7 +107,7 @@ export default function App() {
         }
       />
 
-      {/* unknown route -> dashboard */}
+      {/* Fallback: Unknown routes go to dashboard */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

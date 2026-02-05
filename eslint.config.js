@@ -38,20 +38,6 @@ export default tseslint.config(
       import: importPlugin,
       prettier,
     },
-    settings: {
-      react: {
-        version: 'detect',
-      },
-      'import/resolver': {
-        typescript: {
-          alwaysTryTypes: true,
-          project: './tsconfig.json',
-        },
-        node: {
-          extensions: ['.js', '.jsx', '.ts', '.tsx'],
-        },
-      },
-    },
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...reactJsx.configs.recommended.rules,

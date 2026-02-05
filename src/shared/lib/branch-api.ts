@@ -10,14 +10,19 @@ const BASE_URL = '/api/github/branches';
  * GET /api/github/branches/query?fullName=owner/repo
  */
 export const getBranchesByRepo = async (fullName: string): Promise<Branch[]> => {
-    const response = await apiClient.get<BranchDto[]>(
-        `${BASE_URL}/query`,
-        {
-            params: { fullName }, // <-- query param
-        },
-    );
+    try {
+        const response = await apiClient.get<BranchDto[]>(
+            `${BASE_URL}/query`,
+            {
+                params: { fullName }, // <-- query param
+            },
+        );
 
-    return response.data.map(mapBranchDtoToEntity);
+        return response.data.map(mapBranchDtoToEntity);
+    } catch (error) {
+        console.error(`Failed to fetch branches for ${fullName}:`, error);
+        throw error; // Re-throw to let caller handle
+    }
 };
 
 /**
@@ -25,13 +30,18 @@ export const getBranchesByRepo = async (fullName: string): Promise<Branch[]> => 
  * (Postman'de yaptığın init çağrısı ile birebir aynı)
  */
 export const initBranchesByRepo = async (fullName: string): Promise<Branch[]> => {
-    const response = await apiClient.post<BranchDto[]>(
-        `${BASE_URL}/init`,
-        null,                // body yok
-        {
-            params: { fullName }, // <-- query param
-        },
-    );
+    try {
+        const response = await apiClient.post<BranchDto[]>(
+            `${BASE_URL}/init`,
+            null,                // body yok
+            {
+                params: { fullName }, // <-- query param
+            },
+        );
 
-    return response.data.map(mapBranchDtoToEntity);
+        return response.data.map(mapBranchDtoToEntity);
+    } catch (error) {
+        console.error(`Failed to initialize branches for ${fullName}:`, error);
+        throw error; // Re-throw to let caller handle
+    }
 };

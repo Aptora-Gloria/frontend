@@ -1,19 +1,19 @@
-// src/shared/components/Sidebar.tsx
 import { NavLink, useNavigate } from "react-router-dom";
 import {
     LayoutGrid,
     GitBranch,
     Building2,
     User,
-    Settings,
     LogOut,
+    Activity // <--- YENİ İKON EKLENDİ
 } from "lucide-react";
 import { useAuth } from "@/shared/contexts/AuthContext";
 
+// --- NAVIGASYON LİSTESİ GÜNCELLENDİ ---
 const navItems = [
     { key: "Dashboard", icon: LayoutGrid, to: "/dashboard" },
     { key: "Repositories", icon: GitBranch, to: "/repositories" },
-    { key: "Organizations", icon: Building2, to: "/organizations" },
+    { key: "Performance", icon: Activity, to: "/user-performance" }, // <--- YENİ MENÜ
     { key: "Profile", icon: User, to: "/profile" },
 ];
 
@@ -28,8 +28,6 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
     /** Safe logout */
     const handleLogout = () => {
         logout();
-        // DÜZELTME: "/login" yerine "/" rotasına yönlendiriyoruz
-        // replace: true kullanarak kullanıcının geri tuşuyla tekrar içeri girmesini engelliyoruz
         setTimeout(() => navigate("/", { replace: true }), 0);
     };
 
@@ -77,18 +75,7 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
                     </NavLink>
                 ))}
 
-                {/* --- AYARLAR BUTONU --- */}
-                <button
-                    onClick={onOpenSettings}
-                    className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
-                >
-                    <Settings
-                        className="h-[18px] w-[18px] text-slate-400 transition-colors group-hover:text-slate-600"
-                        strokeWidth={2}
-                    />
-                    <span>Settings</span>
-                </button>
-
+              
             </nav>
 
             {/* --- ALT KISIM: PROFİL & LOGOUT --- */}

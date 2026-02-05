@@ -15,7 +15,6 @@ import {
     ArrowLeft,
     GitBranch,
     Search,
-    User,
     ExternalLink,
     GitCommitHorizontal,
     Copy,
@@ -33,6 +32,9 @@ import type { Repo } from "@/entities/repo";
 import { getUserRepos } from "@/shared/lib/repo-api";
 import { queryCommits, initCommits } from "@/shared/lib/commit-api";
 import { Avatar } from "@/shared/ui";
+import { useToast } from '@/shared/contexts/ToastContext';
+import { ErrorState } from '@/shared/ui/error-state';
+import type { AppError } from '@/shared/errors';
 
 /* ---------- Types & Mapper ---------- */
 
@@ -149,12 +151,15 @@ export default function BranchCommitsPage() {
 
     const stateRepo = location.state?.repo as Repo | undefined;
 
+    const { showError, showSuccess } = useToast();
+
     const [repo, setRepo] = useState<Repo | null>(stateRepo ?? null);
     const [commits, setCommits] = useState<any[]>([]);
     const [search, setSearch] = useState("");
     const [authorFilter, setAuthorFilter] = useState("all");
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<AppError | null>(null);
+    const [repoError, setRepoError] = useState<AppError | null>(null);
 
     /* ---------- Load Data ---------- */
     useEffect(() => {
@@ -164,9 +169,11 @@ export default function BranchCommitsPage() {
                 const data = await getUserRepos();
                 const found = data.find((r) => String(r.id) === String(repoId)) ?? null;
                 setRepo(found);
-            } catch (e) {
-                console.error(e);
-                setError("Repository information could not be loaded.");
+            } catch (error) {
+                console.error('Failed to load repository:', error);
+                const appError = error as AppError;
+                setRepoError(appError);
+                showError('Failed to load repository information.');
             }
         };
         loadRepo();
@@ -183,9 +190,12 @@ export default function BranchCommitsPage() {
                 const mappedData = data.map(mapCommitToItem);
                 mappedData.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
                 setCommits(mappedData);
-            } catch (e) {
+            } catch (err) {
+                console.error('Failed to load commits:', err);
+                const appError = err as AppError;
+                setError(appError);
                 setCommits([]);
-                setError("Failed to sync commits. Please try again.");
+                showError('Failed to load commits. Please try again.');
             } finally {
                 setIsLoading(false);
             }
@@ -195,14 +205,14 @@ export default function BranchCommitsPage() {
 
     /* ---------- Data Processing ---------- */
 
-    // 1. Chart Data (Last 14 days - English Locale)
+    // 1. Chart Data (Last 30 days - English Locale)
     const chartData = useMemo(() => {
-        const days = Array.from({ length: 14 }, (_, i) => {
+        // DÜZELTME: 14 yerine 30 yapıldı
+        const days = Array.from({ length: 30 }, (_, i) => {
             const d = new Date();
             d.setDate(d.getDate() - i);
             return {
                 iso: d.toISOString().split('T')[0],
-                // Force English Date Format (e.g., Nov 10)
                 label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             };
         }).reverse();
@@ -259,7 +269,7 @@ export default function BranchCommitsPage() {
                     <ArrowLeft className="h-6 w-6 text-red-500" />
                 </div>
                 <h2 className="text-lg font-semibold text-slate-900">Repository Not Found</h2>
-                <p className="mt-2 text-sm text-slate-500">{error}</p>
+                <p className="mt-2 text-sm text-slate-500">{error.message}</p>
                 <button onClick={() => navigate('/repositories')} className="mt-6 text-sm font-medium text-blue-600 hover:underline">
                     Back to Repositories
                 </button>
@@ -330,7 +340,8 @@ export default function BranchCommitsPage() {
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2 text-slate-500">
                                     <BarChart3 className="h-4 w-4" />
-                                    <span className="text-xs font-semibold uppercase tracking-wider">Commit Velocity (14 Days)</span>
+                                    {/* DÜZELTME: Başlık güncellendi */}
+                                    <span className="text-xs font-semibold uppercase tracking-wider">Commit Velocity (30 Days)</span>
                                 </div>
                             </div>
                             <div className="flex-1 min-h-[160px]">

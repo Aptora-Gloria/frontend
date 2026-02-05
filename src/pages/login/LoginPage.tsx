@@ -4,12 +4,14 @@ import { motion } from 'framer-motion';
 import { Github } from 'lucide-react';
 import { buildGitHubAuthUrl } from '../../features/auth-login/lib/buildGitHubAuthUrl';
 import { useAuth } from '@/shared/contexts/AuthContext';
+import { useToast } from '@/shared/contexts/ToastContext';
 
 export const LoginPage = () => {
   // Artık kesinlikle Light Mode'dayız.
   const [dark] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated, isLoading } = useAuth();
+  const { showError } = useToast();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -43,6 +45,7 @@ export const LoginPage = () => {
       window.location.href = authUrl;
     } catch (error) {
       console.error('Failed to build GitHub auth URL:', error);
+      showError('Failed to initiate GitHub login. Please check your configuration.');
     }
   };
 

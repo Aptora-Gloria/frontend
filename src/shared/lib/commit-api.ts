@@ -12,12 +12,17 @@ export const queryCommits = async (
     fullName: string,
     branchName: string,
 ): Promise<Commit[]> => {
-    const response = await apiClient.post<CommitDto[]>(`${BASE_URL}/query`, {
-        fullName,
-        branchName,
-    });
+    try {
+        const response = await apiClient.post<CommitDto[]>(`${BASE_URL}/query`, {
+            fullName,
+            branchName,
+        });
 
-    return response.data.map(mapCommitDtoToEntity);
+        return response.data.map(mapCommitDtoToEntity);
+    } catch (error) {
+        console.error(`Failed to query commits for ${fullName}/${branchName}:`, error);
+        throw error; // Re-throw to let caller handle
+    }
 };
 
 // DB'de yoksa ilk init
@@ -25,10 +30,15 @@ export const initCommits = async (
     fullName: string,
     branchName: string,
 ): Promise<Commit[]> => {
-    const response = await apiClient.post<CommitDto[]>(`${BASE_URL}/init`, {
-        fullName,
-        branchName,
-    });
+    try {
+        const response = await apiClient.post<CommitDto[]>(`${BASE_URL}/init`, {
+            fullName,
+            branchName,
+        });
 
-    return response.data.map(mapCommitDtoToEntity);
+        return response.data.map(mapCommitDtoToEntity);
+    } catch (error) {
+        console.error(`Failed to initialize commits for ${fullName}/${branchName}:`, error);
+        throw error; // Re-throw to let caller handle
+    }
 };
